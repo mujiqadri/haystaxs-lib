@@ -63,7 +63,6 @@ OIDS = FALSE
 );
 
 
-
 CREATE TABLE haystack.tables
 (
   runid INTEGER REFERENCES haystack.run_log,
