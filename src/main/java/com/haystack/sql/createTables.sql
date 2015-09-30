@@ -5,6 +5,17 @@ DROP TABLE IF EXISTS haystack.dbconnections cascade;
 DROP TABLE IF EXISTS haystack.query_log cascade;
 drop table if exists haystack.tables cascade;
 DROP TABLE if exists haystack.columns cascade;
+DROP TABLE IF EXISTS haystack.users CASCADE;
+
+CREATE TABLE haystack.users
+(
+  userid       TEXT,
+  organization TEXT,
+  createdate   TEXT,
+  lastlogin    TEXT,
+  CONSTRAINT user_pkey PRIMARY KEY (userid)
+) WITH (OIDS =FALSE
+);
 
 CREATE TABLE haystack.run_log
 (
@@ -13,6 +24,7 @@ CREATE TABLE haystack.run_log
   run_user text,
   run_db text,
   run_schema text,
+  userid text REFERENCES haystack.users,
   CONSTRAINT run_log_pkey PRIMARY KEY (run_id)
 )
 WITH (
