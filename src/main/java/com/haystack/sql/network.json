@@ -1,0 +1,58 @@
+{
+  "table": [
+    {
+      id: 1,
+      label: "Customer",
+      rowcount: "10,000",
+      sizeondisk: "1GB",
+      score: "0.0004634644",
+      dkey
+      =
+      "customerid"
+    },
+    {
+      id: 2,
+      label: "Account",
+      rowcount: "35,000",
+      sizeondisk: "5GB"
+    },
+    score
+    :
+    "0.0020543434",
+    dkey
+    =
+    "accountid"
+    },
+    {
+      id: 3,
+      label: "Event",
+      rowcount: "3,000,000",
+      sizeondisk: "120GB",
+      score: "0.07535232464",
+      dkey
+      =
+      "accountid"
+    }
+  ],
+  "join": [
+    {
+      source: 0,
+      target: 1,
+      type: "JOIN",
+      joinColumnSource: "customerid",
+      joinColumnTarget: "customerid",
+      noOfQueries: "2345",
+      IOPS: "436436234"
+    },
+    {
+      source: 0,
+      target: 2,
+      type: "LEFT OUTER JOIN"
+    },
+    {
+      source: 1,
+      target: 2,
+      type: "JOIN"
+    }
+  ]
+}
