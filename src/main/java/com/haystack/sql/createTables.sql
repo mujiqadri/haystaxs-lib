@@ -21,10 +21,9 @@ CREATE TABLE haystack.run_log
 (
   run_id integer,
   run_date timestamp without time zone,
-  run_user text,
+  run_user TEXT REFERENCES haystack.users,
   run_db text,
   run_schema text,
-  userid text REFERENCES haystack.users,
   CONSTRAINT run_log_pkey PRIMARY KEY (run_id)
 )
 WITH (
