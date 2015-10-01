@@ -21,7 +21,7 @@ import java.util.Date;
 /**
  * Created by qadrim on 15-04-23.
  */
-/* CatalogService class reads the Greenplum/HAWQ Database
+/* CatalogService class reads the User Data from Greenplum/HAWQ Database
         * Gets the List of Tables
         * Annotates it with the Statistics
         * Gets Table Type Columnar/Row, compression and partitions
@@ -47,13 +47,14 @@ import java.util.Date;
             this.properties = config.properties;
             this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
             dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM,sqlPath);
-            this.credentials = config.getClusterCredentials();
+            this.credentials = config.getUserDataCredentials();
             dbConnect.connect(credentials);
         }catch (Exception e){
             log.error(e.toString());
             throw e;
         }
     }
+
     // Read File with multiple SQL statements, spread across multiple lines, and includes comments
     public void readSQLFile(String filename) {
         try {
