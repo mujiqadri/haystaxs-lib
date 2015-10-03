@@ -28,7 +28,7 @@ public class ConfigProperties {
         }
     }
 
-    public Credentials getCredentials(){
+    public Credentials getHaystackDBCredentials() {
 
         Credentials credentials = new Credentials();
         credentials.setHostName(properties.getProperty("haystack.datasource.host"));
@@ -38,7 +38,8 @@ public class ConfigProperties {
         credentials.setPassword(properties.getProperty("haystack.datasource.password"));
         return credentials;
     }
-    public Credentials getClusterCredentials(){
+
+    public Credentials getUserDataCredentials() {
 
         Credentials clusterCred = new Credentials();
         clusterCred.setHostName(properties.getProperty("haystack.ds_cluster.host"));
@@ -46,6 +47,17 @@ public class ConfigProperties {
         clusterCred.setDatabase(properties.getProperty("haystack.ds_cluster.database"));
         clusterCred.setUserName(properties.getProperty("haystack.ds_cluster.username"));
         clusterCred.setPassword(properties.getProperty("haystack.ds_cluster.password"));
+
+        return clusterCred;
+    }
+
+    public Credentials getGPSDCredentials() {
+        Credentials clusterCred = new Credentials();
+        clusterCred.setHostName(properties.getProperty("gpsd.host"));
+        clusterCred.setPort(properties.getProperty("gpsd.port"));
+        clusterCred.setDatabase(properties.getProperty("gpsd.database"));
+        clusterCred.setUserName(properties.getProperty("gpsd.username"));
+        clusterCred.setPassword(properties.getProperty("gpsd.password"));
 
         return clusterCred;
     }
