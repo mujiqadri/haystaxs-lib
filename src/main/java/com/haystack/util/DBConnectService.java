@@ -82,6 +82,14 @@ public class DBConnectService {
         this.setCredentials(credentials);
         return connect();
     }
+
+    public void close() {
+        try {
+            conn.close();
+        } catch (Exception e) {
+
+        }
+    }
     public boolean connect() throws SQLException, ClassNotFoundException {
         if (host.isEmpty() || port.isEmpty() || dbName.isEmpty() || user.isEmpty() || pass.isEmpty()) {
             log.error("Database credentials missing, All fields are mandatory.");
