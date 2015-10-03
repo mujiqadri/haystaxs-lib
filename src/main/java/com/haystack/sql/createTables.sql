@@ -6,29 +6,57 @@ DROP TABLE IF EXISTS haystack.query_log cascade;
 drop table if exists haystack.tables cascade;
 DROP TABLE if exists haystack.columns cascade;
 DROP TABLE IF EXISTS haystack.users CASCADE;
+DROP TABLE IF EXISTS haystack.gpsd CASCADE;
 
 CREATE TABLE haystack.users
 (
   userid       TEXT,
+  password   TEXT,
   organization TEXT,
-  createdate   TEXT,
-  lastlogin    TEXT,
+  createdate TIMESTAMP,
+  lastlogin  TIMESTAMP,
   CONSTRAINT user_pkey PRIMARY KEY (userid)
 ) WITH (OIDS =FALSE
 );
 
+
+CREATE TABLE haystack.gpsd
+(
+  userid       text,
+  dbname       text,
+  seqkey       integer,
+  filename     text,
+  gpsd_db      text,
+  gpsd_date    date,
+  gpsd_params  text,
+  gpsd_version text,
+  noOflines    bigint
+)
+WITH (
+OIDS =FALSE
+)
+  DISTRIBUTED BY (userid);
+
+
+
 CREATE TABLE haystack.run_log
 (
-  run_id integer,
+  run_id     integer NOT NULL,
   run_date timestamp without time zone,
-  run_user TEXT REFERENCES haystack.users,
+  run_user   text,
   run_db text,
   run_schema text,
-  CONSTRAINT run_log_pkey PRIMARY KEY (run_id)
+  model_json text,
+  CONSTRAINT run_log_pkey PRIMARY KEY (run_id),
+  CONSTRAINT run_log_run_user_fkey FOREIGN KEY (run_user)
+  REFERENCES haystack.users (userid) MATCH SIMPLE
+  ON UPDATE NO ACTION ON DELETE NO ACTION
 )
 WITH (
 OIDS=FALSE
-);
+)
+  DISTRIBUTED BY (run_id);
+
 
 CREATE TABLE haystack.dbconnections
 (
