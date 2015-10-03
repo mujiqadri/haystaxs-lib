@@ -40,7 +40,12 @@ public  class CatalogService {
     }
 
     public void executeGPSD(String userId, String filename) {
+        int lineNo = 0;
         try {
+            Integer batchSize = Integer.parseInt(configProperties.properties.getProperty("gpsd.batchsize"));
+            StringBuilder sbBatchQueries = new StringBuilder();
+
+
             ArrayList<String> fileQueries = new ArrayList<String>();
 
             String gpsdDBName = "";
@@ -67,9 +72,13 @@ public  class CatalogService {
             tmpdbConn.connect(tmpCred);
 
             tmpdbConn.execNoResultSet("CREATE DATABASE " + gpsdDBName + ";");
+            tmpdbConn.close();
+
             //======================================================
             // Add a line in GPSD for the new Database
-            dbConnect.execNoResultSet("insert into haystack.gpsd(userid, dbname, seqkey) values('" + userId + "','" + gpsdDBName + "'," + Integer.parseInt(seqkey) + ");");
+            dbConnect.execNoResultSet("insert into haystack.gpsd(userid, dbname, seqkey) "
+                    + " values('" + userId + "','" + gpsdDBName + "'," + Integer.parseInt(seqkey) + ");");
+
 
             // Get GPSD Credentials
             ConfigProperties gpsdConfig = new ConfigProperties();
@@ -89,20 +98,96 @@ public  class CatalogService {
 
             String ls = System.getProperty("line.separator");
 
+            Integer currBatchSize = 1;
+
+            // Header Variables
+            String gpsd_DB = "", gpsd_date = "", gpsd_params = "", gpsd_version = "";
+
+
+
             while ((line = reader.readLine()) != null) {
+                lineNo++;
                 if (line.trim().length() == 0) {
                     continue;
                 }
                 // If line has comments ignore the comments line, extract any characters before the comments line
                 int x = line.indexOf("--");
+                if (lineNo == 20) {
+                    if (gpsd_date.length() == 0 && gpsd_version.length() == 0) {
+                        Exception e = new Exception("GPSD File not in proper format");
+                        throw e;
+                    }
+                }
                 if (x >= 0) {
+                    // Extract Header Info
+                    if (lineNo < 11) {
+                        int i = line.indexOf("-- Database:");
+                        if (i >= 0) {
+                            gpsd_DB = line.substring(13);
+                        }
+                        i = line.indexOf("-- Date:");
+                        if (i >= 0) {
+                            gpsd_date = line.substring(8);
+                        }
+                        i = line.indexOf("-- CmdLine:");
+                        if (i >= 0) {
+                            gpsd_params = line.substring(11);
+                        }
+                        i = line.indexOf("-- Version:");
+                        if (i >= 0) {
+                            gpsd_version = line.substring(11);
+                            // Update  GPSD  with the Header Information for the new Database
+                            dbConnect.execNoResultSet("update haystack.gpsd set gpsd_db = '" + gpsd_DB + "', gpsd_date = '" + gpsd_date + "' , gpsd_params='"
+                                    + gpsd_params + "', gpsd_version = '" + gpsd_version + "', filename ='" + filename + "' where dbname ='" + gpsdDBName + "';");
+                        }
+                    }
+
                     if (x > 0) {
                         String[] strSplit = line.split("--");
                         currQuery = currQuery + " " + strSplit[0];
                     }
                 } else {
-                    int z = line.indexOf("\\connect");
-                    if (z < 0) {
+
+                    // Check if its CREATE FUNCTION STATEMENT (Readline till function is ignore) (to avoid semi-colon problems)
+
+                    int isFunction = line.toUpperCase().indexOf("CREATE FUNCTION");
+
+                    Boolean foundFirstDollar = false;
+                    Boolean foundSecondDollar = false;
+                    Boolean continueIgnore = false;
+
+                    if (isFunction >= 0) {
+                        continueIgnore = true;
+                    }
+
+                    while (continueIgnore) {
+                        line = reader.readLine();
+                        lineNo++;
+                        if (line.trim().length() == 0) {
+                            continue;
+                        }
+
+                        if (line.indexOf("$$") >= 0) {
+                            if (foundFirstDollar == true) {
+                                foundSecondDollar = true;
+                            } else {
+                                foundFirstDollar = true;
+                            }
+                        }
+                        if (foundFirstDollar && foundSecondDollar && line.indexOf(";") >= 0) {
+                            continueIgnore = false;
+                        }
+                    }
+
+                    if (isFunction >= 0) {
+                        continue;
+                    }
+
+                    // ====================== End Avoid Create Function ====================
+                    int isChangingDB = line.indexOf("\\connect");
+
+
+                    if (isChangingDB < 0) {
 
 
                         int y = line.indexOf(";");
@@ -113,12 +198,31 @@ public  class CatalogService {
                             } else {
                                 currQuery = currQuery + " " + ";";
                             }
-                            fileQueries.add(currQuery);
-                            try {
-                                dbConnGPSD.execNoResultSet(currQuery);
-                            } catch (Exception e) {
-                                // do nothing
+
+                            // Check if query is insert then Batch it otherwise execute it
+                            int isInsert = currQuery.toLowerCase().indexOf("insert");
+
+                            if (isInsert >= 0) {
+                                sbBatchQueries.append(currQuery);
+                                if ((currBatchSize >= batchSize)) {
+                                    try {
+                                        dbConnGPSD.execNoResultSet(sbBatchQueries.toString());
+                                    } catch (Exception e) {
+                                        // do nothing
+                                    }
+                                    currBatchSize = 0;
+                                    sbBatchQueries.setLength(0);
+                                }
+                                currBatchSize++;
+                            } else { // Not an insert query execute it;
+                                try {
+                                    dbConnGPSD.execNoResultSet(currQuery);
+                                } catch (Exception e) {
+                                    // do nothing
+                                }
                             }
+                            // Query Extracted Now Check BatchSize and execute the query
+
                             currQuery = "";
                             if (strSplit.length > 1) {
                                 currQuery = strSplit[1];
@@ -129,11 +233,12 @@ public  class CatalogService {
                     }
                 }
             }
-            // All queries parsed now execute them
-            for (int k = 0; k < fileQueries.size(); k++) {
-                String qry = fileQueries.get(k);
-                dbConnGPSD.execNoResultSet(qry);
-            }
+            dbConnGPSD.close();
+            //======================================================
+            // Update  GPSD  with the Header Information for the new Database
+            dbConnect.execNoResultSet("update  haystack.gpsd set noOflines = " + lineNo + " where dbname ='" + gpsdDBName + "';");
+            dbConnect.close();
+
         } catch (Exception e) {
             log.error(e.toString());
         }
