@@ -45,7 +45,6 @@ CREATE TABLE haystack.run_log
   run_date timestamp without time zone,
   run_user   text,
   run_db text,
-  run_schema text,
   model_json text,
   CONSTRAINT run_log_pkey PRIMARY KEY (run_id),
   CONSTRAINT run_log_run_user_fkey FOREIGN KEY (run_user)
