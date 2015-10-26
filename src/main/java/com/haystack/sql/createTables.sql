@@ -74,15 +74,17 @@ OIDS=FALSE
 
 CREATE TABLE haystack.query_log
 (
-  logtime     TIMESTAMP WITH TIME ZONE,
   run_id INTEGER REFERENCES haystack.run_log,
-  loguser     TEXT,
+  logsession  TEXT,
+  logcmdcount TEXT,
   logdatabase TEXT,
+  loguser     TEXT,
   logpid      TEXT,
-  logthread   TEXT,
-  loghost     TEXT,
-  logsegment  TEXT,
+  logtimemin  TIMESTAMP WITH TIME ZONE,
+  logtimemax  TIMESTAMP WITH TIME ZONE,
+  logduration INTERVAL,
   sqltext     TEXT
+
 )
 WITH (
 OIDS = FALSE
