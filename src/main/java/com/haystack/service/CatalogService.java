@@ -1,6 +1,7 @@
 package com.haystack.service;
 
 import com.haystack.domain.Query;
+import com.haystack.parser.statement.select.IntersectOp;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
@@ -24,7 +25,6 @@ public  class CatalogService {
     private String sqlPath;
     private static Logger log = LoggerFactory.getLogger(CatalogService.class.getName());
     private DBConnectService dbConnect;
-    public int runId;
 
     public CatalogService(ConfigProperties configProperties) {
         this.configProperties = configProperties;
@@ -38,6 +38,33 @@ public  class CatalogService {
         }
         validateSchema();
     }
+
+    // LoadQueryLog Method, reads the gzipped query log file from the Upload Directory
+    // Pass the UserID, which will determine which schema the QueryLog table will be created
+    // Pass the QueryId, against which the QueryLogDates table will be populated
+    // Pass the QueryLogDirectory, where the csv log files have been uncompressed
+
+
+    public boolean processQueryLog(String userId, Integer queryID, String queryLogDirectory) {
+
+        //Integer runID = getRunId(userId);
+
+        String extTableNAme = createExternalTableForQueries(queryLogDirectory, queryID, userId);
+
+        Boolean loadResult = loadQueries(extTableNAme, queryID, userId);
+
+        if (loadResult == true) {
+            return true;
+        } else {
+            return false;
+        }
+
+    }
+
+    public void process(String runId, String userId) {
+        // json
+    }
+
 
     public void executeGPSD(String userId, String filename) {
         int lineNo = 0;
@@ -244,6 +271,82 @@ public  class CatalogService {
         }
     }
 
+
+    private Boolean loadQueries(String extTableName, Integer QueryId, String userId) {
+
+        String strRunId = String.format("%05d", QueryId);
+        String queryLogTableName = userId + ".qry" + strRunId;
+        String schemaName = userId;
+        ResultSet rs = null;
+
+        try {
+
+            String sql = "SELECT haystack.load_querylog('" + schemaName + "','QueryLog','" + extTableName + "');";
+
+            dbConnect.execNoResultSet(sql);
+
+            return true;
+        } catch (Exception e) {
+            log.error(e.toString());
+        }
+        return true;
+
+    }
+
+    private String createExternalTableForQueries(String queryLogDirectory, Integer queryId, String userid) {
+        String extTableName = userid + ".ext_" + queryId;
+
+        try {
+
+            //String qryFileDir = configProperties.properties.getProperty("qry.upload.directory");
+
+            String sql = "\n" +
+                    "CREATE EXTERNAL WEB TABLE " + extTableName + "\n" +
+                    "(\n" +
+                    "    logtime timestamp with time zone,\n" +
+                    "    loguser text,\n" +
+                    "    logdatabase text,\n" +
+                    "    logpid text,\n" +
+                    "    logthread text,\n" +
+                    "    loghost text,\n" +
+                    "    logport text,\n" +
+                    "    logsessiontime timestamp with time zone,\n" +
+                    "    logtransaction int,\n" +
+                    "    logsession text,\n" +
+                    "    logcmdcount text,\n" +
+                    "    logsegment text,\n" +
+                    "    logslice text,\n" +
+                    "    logdistxact text,\n" +
+                    "    loglocalxact text,\n" +
+                    "    logsubxact text,\n" +
+                    "    logseverity text,\n" +
+                    "    logstate text,\n" +
+                    "    logmessage text,\n" +
+                    "    logdetail text,\n" +
+                    "    loghint text,\n" +
+                    "    logquery text,\n" +
+                    "    logquerypos int,\n" +
+                    "    logcontext text,\n" +
+                    "    logdebug text,\n" +
+                    "    logcursorpos int,\n" +
+                    "    logfunction text,\n" +
+                    "    logfile text,\n" +
+                    "    logline int,\n" +
+                    "    logstack text\n" +
+                    ")\n" +
+                    "EXECUTE E'cat " + queryLogDirectory + "/*.csv' ON MASTER\n" +
+                    "FORMAT 'CSV' (DELIMITER AS ',' NULL AS '' QUOTE AS '\"');";
+
+
+            createSchema(userid);
+            dbConnect.execNoResultSet("DROP EXTERNAL  TABLE IF EXISTS " + extTableName + ";");
+            dbConnect.execNoResultSet(sql);
+
+        } catch (Exception e) {
+            log.error(e.toString());
+        }
+        return extTableName;
+    }
     public void createUser(String userId, String password, String org) {
         try {
 
@@ -255,33 +358,49 @@ public  class CatalogService {
         }
     }
 
-    public void genRunId(String userId) {
+    public Integer getRunId(String userId) {
+        Integer l_RunId = 0;
         try {
             validateSchema();
             // Insert a row in runlog, so that next time, only new queries get inserted in log
-            ResultSet run_id = dbConnect.execQuery(dbConnect.getSQLfromFile("getMaxRunId"));
+            String sql = "SELECT coalesce(max(run_id) + 1, 1) AS max_run_id\n" +
+                    "FROM haystack.run_log;\n";
+            //ResultSet run_id = dbConnect.execQuery(dbConnect.getSQLfromFile("getMaxRunId"));
+            ResultSet run_id = dbConnect.execQuery(sql);
             run_id.next();
 
-            runId = run_id.getInt("max_run_id");
+            l_RunId = run_id.getInt("max_run_id");
 
-            log.info("RUNLOG=" + run_id);
-            String sql = "insert into haystack.run_log(run_id, run_db, run_date, run_user,  run_time) values(" + runId +
-                    ",'" + credentials.getDatabase() + "', now());";
-            dbConnect.execNoResultSet(sql);
+            log.info("RUNLOG=" + l_RunId);
+            //String sql = "insert into haystack.run_log(run_id, , run_db, run_date, run_user) values(" + l_RunId +
+            //        ",'" + credentials.getDatabase() + "', now(),'" + userId + "' );";
+            //dbConnect.execNoResultSet(sql);
         }catch(Exception e){
             log.error(e.toString());
         }
+        return l_RunId;
     }
 
 
+    private void createSchema(String schemaName) throws SQLException, IOException {
 
-    private void createSchema() throws SQLException, IOException {
+        try {
+            // Create Schema HAYSTACK
+            String qry = "select exists (select * from pg_catalog.pg_namespace where nspname = '" + schemaName + "')as result;";
+            ResultSet rs = dbConnect.execQuery(qry);
+            rs.next();
+            if (rs.getBoolean("result") == false) {
 
-        // Create Schema HAYSTACK
-        String sqlQry = "create schema haystack;";
-        int result = dbConnect.execNoResultSet(sqlQry);
-        // Create Model Tables
-        dbConnect.execScript("createTables");
+                String sqlQry = "create schema " + schemaName + ";";
+                int result = dbConnect.execNoResultSet(sqlQry);
+                // Create Model Tables
+                if (schemaName == "haystack") {
+                    dbConnect.execScript("createTables");
+                }
+            }
+        } catch (Exception e) {
+            log.error(e.toString());
+        }
 
     }
 
@@ -296,7 +415,7 @@ public  class CatalogService {
                 String res = rs.getString(1);
                 if (res.contains("f")) {
                     log.info("Haystack schema doesnt exist in postgres, creating it now");
-                    createSchema();
+                    createSchema("haystack");
                     exists = false;
 
                 } else {
@@ -311,11 +430,6 @@ public  class CatalogService {
         // Save all queries in the Haystack Schema
     }
 
-    private void getStatistics(){
 
-    }
-    // This function will be called for UI refresh of the model, will
-    public void loadTables(String runId){
 
-    }
 }
