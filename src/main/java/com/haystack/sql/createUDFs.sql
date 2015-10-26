@@ -1,45 +1,8 @@
+--drop table doctor.querylog;
+-- select haystack.load_querylog('doctor','QueryLog','ext_103',103);
 
-CREATE OR REPLACE FUNCTION haystack.create_month_partition(schema_name text, table_name text, monthpartition_name text) RETURNS boolean
-    AS $_$
-DECLARE
-    mycommand TEXT;
-    monthpartition_exists BOOLEAN;
-
-BEGIN
-	-- Find how many days in the current month
-	-- query to see if the target partition already exists
-
-	SELECT count(*) > 0 INTO monthpartition_exists FROM pg_partitions
-	WHERE partitionname = monthpartition_name
-		AND tablename = table_name
-		AND schemaname = schema_name;
-
-	-- if the target partition does not exist create it and return
-
-	IF monthpartition_exists = 't' THEN
-		RAISE INFO 'Month Partition Already Exists';
-		RETURN FALSE;
-	END IF;
-
-	-- if the target partition does not exist create it and return
-	IF monthpartition_exists = 'f' THEN
-
-		mycommand := 'ALTER TABLE ' || schema_name || '.' || table_name || ' ADD PARTITION "' || $3 || '" START (''' || $3 || ' 00:00:00.000'') '
-		 || ' INCLUSIVE END (''' || $3 || ' 23:59:59.999'') EXCLUSIVE;';
-		RAISE INFO 'Month partition does not exist.  Creating partition now using [%]', mycommand;
-		EXECUTE mycommand;
-
-	END IF;
-
-	RETURN TRUE;
-
-END;
-
-$_$
-    LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION haystack.load_querylog(schema TEXT, qryLogTblName TEXT,  ext_TblName TEXT)
-  RETURNS integer AS
+CREATE OR REPLACE FUNCTION haystack.load_querylog(schema TEXT, qryLogTblName TEXT,  ext_TblName TEXT, queryID INT)
+  RETURNS VOID AS
 $BODY$
 DECLARE
 	    mycommand TEXT;
@@ -53,8 +16,9 @@ BEGIN -- outer function wrapper
 
 	select count(*) > 0 INTO tbl_exists
 	from information_schema.tables
-	where table_schema = schema and table_name = qryLogTblName;
+	where upper(table_schema) = upper(schema) and upper(table_name) = upper(qryLogTblName);
 
+	RAISE NOTICE 'TABLE EXISTS:%', tbl_exists;
 	IF tbl_exists = 'f' THEN
 		RAISE INFO '%.% Doesnot exist, creating table', schema, qryLogTblName ;
 		mycommand := 'CREATE TABLE ' || schema || '.' || qryLogTblName || '
@@ -87,10 +51,14 @@ BEGIN -- outer function wrapper
         raise notice 'sql %',sql;
          for rec in execute sql loop
                  RAISE NOTICE '--> MONTH %', rec.logtime ;
-                 SELECT haystack.create_month_partition(schema, qryLogTblName, rec.logtime) INTO result;
-                 IF result = 'f' THEN RAISE NOTICE 'Partition Already Exists';
-                 ELSE RAISE NOTICE 'Partition Created';
+                 SELECT haystack.create_month_partition(lower(schema), lower(qryLogTblName), rec.logtime) INTO result;
+                 IF result = 'f'
+			THEN RAISE NOTICE 'Partition Already Exists';
+			ELSE RAISE NOTICE 'Partition Created';
                  END IF;
+		  mycommand := 'INSERT INTO haystack.query_log_dates(querylog_id,logdate) values(' || queryID || ',''' || rec.logtime || ''');';
+		 EXECUTE mycommand;
+		 RAISE NOTICE 'Inserted Date:% into Haystack.Query_Log_Dates', rec.logtime;
          end loop;
 
 
@@ -138,8 +106,50 @@ BEGIN -- outer function wrapper
 	EXECUTE sql;
 
          RAISE NOTICE 'Complete';
-RETURN (0);
+
 END; -- outer function wrapper
 $BODY$
   LANGUAGE plpgsql VOLATILE;
 
+
+  ---=============
+
+
+CREATE OR REPLACE FUNCTION haystack.create_month_partition(schema_name text, table_name text, monthpartition_name text) RETURNS boolean
+    AS $_$
+DECLARE
+    mycommand TEXT;
+    monthpartition_exists BOOLEAN;
+
+BEGIN
+	-- Find how many days in the current month
+	-- query to see if the target partition already exists
+
+	SELECT count(*) > 0 INTO monthpartition_exists FROM pg_partitions
+	WHERE partitionname = monthpartition_name
+		AND tablename = table_name
+		AND schemaname = schema_name;
+
+	-- if the target partition does not exist create it and return
+
+	IF monthpartition_exists = 't' THEN
+		RAISE INFO 'Month Partition Already Exists';
+		RETURN FALSE;
+	END IF;
+
+	-- if the target partition does not exist create it and return
+	IF monthpartition_exists = 'f' THEN
+
+		mycommand := 'ALTER TABLE ' || schema_name || '.' || table_name || ' ADD PARTITION "' || $3 || '" START (''' || $3 || ' 00:00:00.000'') '
+		 || ' INCLUSIVE END (''' || $3 || ' 23:59:59.999'') EXCLUSIVE;';
+		RAISE INFO 'Month partition does not exist.  Creating partition now using [%]', mycommand;
+		EXECUTE mycommand;
+
+	END IF;
+
+	RETURN TRUE;
+
+END;
+
+$_$
+    LANGUAGE plpgsql;
