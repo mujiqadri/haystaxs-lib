@@ -16,7 +16,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** CatalogService will deal with all functions related to storing and retreving Model in haystack internal
+/** CatalogService will deal with all functions related to storing and retrieving Model in haystack internal
  *  Postgres database
  */
 public  class CatalogService {
@@ -59,10 +59,6 @@ public  class CatalogService {
             return false;
         }
 
-    }
-
-    public void process(String runId, String userId) {
-        // json
     }
 
 
@@ -281,27 +277,27 @@ public  class CatalogService {
 
         try {
 
-            String sql = "SELECT haystack.load_querylog('" + schemaName + "','QueryLog','" + extTableName + "');";
+            String sql = "SELECT haystack.load_querylog('" + schemaName + "','QueryLog','" + extTableName + "'," + QueryId + ");";
 
-            dbConnect.execNoResultSet(sql);
+            rs = dbConnect.execQuery(sql);
 
-            return true;
         } catch (Exception e) {
             log.error(e.toString());
+            return false;
         }
         return true;
 
     }
 
     private String createExternalTableForQueries(String queryLogDirectory, Integer queryId, String userid) {
-        String extTableName = userid + ".ext_" + queryId;
+        String extTableName = "ext_" + queryId;
 
         try {
 
             //String qryFileDir = configProperties.properties.getProperty("qry.upload.directory");
 
             String sql = "\n" +
-                    "CREATE EXTERNAL WEB TABLE " + extTableName + "\n" +
+                    "CREATE EXTERNAL WEB TABLE " + userid + "." + extTableName + "\n" +
                     "(\n" +
                     "    logtime timestamp with time zone,\n" +
                     "    loguser text,\n" +
@@ -339,7 +335,7 @@ public  class CatalogService {
 
 
             createSchema(userid);
-            dbConnect.execNoResultSet("DROP EXTERNAL  TABLE IF EXISTS " + extTableName + ";");
+            dbConnect.execNoResultSet("DROP EXTERNAL  TABLE IF EXISTS " + userid + "." + extTableName + ";");
             dbConnect.execNoResultSet(sql);
 
         } catch (Exception e) {
