@@ -1,0 +1,5 @@
+# Created by Adnan
+.idea
+*.iml
+out
+target
