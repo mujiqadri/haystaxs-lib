@@ -15,7 +15,6 @@ public class GPSDTest extends TestCase {
         Integer queryID = 103;
         String queryLogDirectory = "/upload/doctor@gmail.com/querylog/346346346";  // The zipped file should be unzipped in a temp folder on Master Node
 
-
         ConfigProperties configProperties = new ConfigProperties();
 
         configProperties.loadProperties();
@@ -38,7 +37,7 @@ public class GPSDTest extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        catalogService.executeGPSD(userId, filename);
+        //catalogService.executeGPSD(userId, filename);
 
         System.out.print("test finished");
     }

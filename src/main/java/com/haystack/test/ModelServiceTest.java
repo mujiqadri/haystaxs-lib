@@ -63,7 +63,7 @@ public class ModelServiceTest extends TestCase {
 
         ClusterService clusterService = new ClusterService(configProperties);
 
-        clusterService.readSQLFile("/Work/01-haystack/HayStack-1.2-22APR2015-JAR/HayStack-1.2-22APR2015/src/main/resources/query_0.sql");
+        //clusterService.readSQLFile("/Work/01-haystack/HayStack-1.2-22APR2015-JAR/HayStack-1.2-22APR2015/src/main/resources/query_0.sql");
 
         // Load Table stats into memory
         Tables tablelist = clusterService.getTablesfromCluster();

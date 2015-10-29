@@ -16,10 +16,11 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** CatalogService will deal with all functions related to storing and retrieving Model in haystack internal
- *  Postgres database
+/**
+ * CatalogService will deal with all functions related to storing and retrieving Model in haystack internal
+ * Postgres database
  */
-public  class CatalogService {
+public class CatalogService {
     private ConfigProperties configProperties;
     private Credentials credentials;
     private String sqlPath;
@@ -30,20 +31,19 @@ public  class CatalogService {
         this.configProperties = configProperties;
         this.credentials = configProperties.getHaystackDBCredentials();
         this.sqlPath = configProperties.properties.getProperty("haystack.sqlDirectory");
-        dbConnect = new DBConnectService(DBConnectService.DBTYPE.POSTGRES,this.sqlPath);
+        dbConnect = new DBConnectService(DBConnectService.DBTYPE.POSTGRES, this.sqlPath);
         try {
             dbConnect.connect(this.credentials);
-        }catch(Exception e){
+        } catch (Exception e) {
             log.error("Exception while connecting to Catalog Database" + e.toString());
         }
         validateSchema();
     }
 
-    // LoadQueryLog Method, reads the gzipped query log file from the Upload Directory
+    // ProcessQueryLog Method, reads the unzipped query log file(s) from the Upload Directory
     // Pass the UserID, which will determine which schema the QueryLog table will be created
     // Pass the QueryId, against which the QueryLogDates table will be populated
     // Pass the QueryLogDirectory, where the csv log files have been uncompressed
-
 
     public boolean processQueryLog(String userId, Integer queryID, String queryLogDirectory) {
 
@@ -61,34 +61,40 @@ public  class CatalogService {
 
     }
 
-
-    public void executeGPSD(String userId, String filename) {
+    public boolean executeGPSD(int gpsdId, String userName, String fileName) {
+        // TODO: This should come from the config file
+        String searchPath = "haystack_ui";
         int lineNo = 0;
+        boolean hadErrors = false;
+        String sqlToExec;
         try {
+            // NOTE: What's this for ?
             Integer batchSize = Integer.parseInt(configProperties.properties.getProperty("gpsd.batchsize"));
             StringBuilder sbBatchQueries = new StringBuilder();
 
-
             ArrayList<String> fileQueries = new ArrayList<String>();
 
-            String gpsdDBName = "";
-            String seqkey = "";
+            String gpsdDBName = userName + String.format("%04d", gpsdId);
+            //String seqkey = "";
             DBConnectService dbConnGPSD = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, this.sqlPath);
 
             // Generate a new Database for this User
+            /*
             ResultSet rsMaxdbId = dbConnect.execQuery("select lpad(((coalesce(max(seqkey),0)+1)::text), 4, '0')\n" +
                     "from haystack.gpsd\n" +
-                    "where userid = '" + userId + "'");
+                    "where userid = '" + userName + "'");
             while (rsMaxdbId.next()) {
                 seqkey = rsMaxdbId.getString(1);
-                gpsdDBName = userId + seqkey;
+                gpsdDBName = userName + seqkey;
             }
             rsMaxdbId.close();
+            */
 
             // Create a database
             ConfigProperties tmpConfig = new ConfigProperties();
             tmpConfig.loadProperties();
             Credentials tmpCred = tmpConfig.getGPSDCredentials();
+            // TODO: Should 'postgres' be hardcoded ?
             tmpCred.setDatabase("postgres");
 
             DBConnectService tmpdbConn = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, this.sqlPath);
@@ -99,8 +105,8 @@ public  class CatalogService {
 
             //======================================================
             // Add a line in GPSD for the new Database
-            dbConnect.execNoResultSet("insert into haystack.gpsd(userid, dbname, seqkey) "
-                    + " values('" + userId + "','" + gpsdDBName + "'," + Integer.parseInt(seqkey) + ");");
+            /*dbConnect.execNoResultSet(String.format("insert into %s.gpsd(user_id, dbname, seqkey) "
+                    + " values('" + userName + "','" + gpsdDBName + "'," + Integer.parseInt(seqkey) + ");");*/
 
 
             // Get GPSD Credentials
@@ -116,7 +122,7 @@ public  class CatalogService {
             String currQuery = "";
             String nextQuery = "";
 
-            BufferedReader reader = new BufferedReader(new FileReader(filename));
+            BufferedReader reader = new BufferedReader(new FileReader(fileName));
             String line = null;
 
             String ls = System.getProperty("line.separator");
@@ -125,7 +131,6 @@ public  class CatalogService {
 
             // Header Variables
             String gpsd_DB = "", gpsd_date = "", gpsd_params = "", gpsd_version = "";
-
 
 
             while ((line = reader.readLine()) != null) {
@@ -160,8 +165,11 @@ public  class CatalogService {
                         if (i >= 0) {
                             gpsd_version = line.substring(11);
                             // Update  GPSD  with the Header Information for the new Database
-                            dbConnect.execNoResultSet("update haystack.gpsd set gpsd_db = '" + gpsd_DB + "', gpsd_date = '" + gpsd_date + "' , gpsd_params='"
-                                    + gpsd_params + "', gpsd_version = '" + gpsd_version + "', filename ='" + filename + "' where dbname ='" + gpsdDBName + "';");
+                            /*dbConnect.execNoResultSet(String.format("update haystack.gpsd set gpsd_db = '" + gpsd_DB + "', gpsd_date = '" + gpsd_date + "' , gpsd_params='"
+                                    + gpsd_params + "', gpsd_version = '" + gpsd_version + "', filename ='" + fileName + "' where dbname ='" + gpsdDBName + "';");*/
+                            sqlToExec = String.format("UPDATE %s.gpsd SET gpsd_db='%s', gpsd_date='%s', gpsd_params='%s', gpsd_version='%s' WHERE gpsd_id = %d;",
+                                    searchPath, gpsd_DB, gpsd_date, gpsd_params, gpsd_version, gpsdId);
+                            dbConnect.execNoResultSet(sqlToExec);
                         }
                     }
 
@@ -231,6 +239,7 @@ public  class CatalogService {
                                     try {
                                         dbConnGPSD.execNoResultSet(sbBatchQueries.toString());
                                     } catch (Exception e) {
+                                        hadErrors = true;
                                         // do nothing
                                     }
                                     currBatchSize = 0;
@@ -241,6 +250,7 @@ public  class CatalogService {
                                 try {
                                     dbConnGPSD.execNoResultSet(currQuery);
                                 } catch (Exception e) {
+                                    hadErrors = true;
                                     // do nothing
                                 }
                             }
@@ -259,14 +269,18 @@ public  class CatalogService {
             dbConnGPSD.close();
             //======================================================
             // Update  GPSD  with the Header Information for the new Database
-            dbConnect.execNoResultSet("update  haystack.gpsd set noOflines = " + lineNo + " where dbname ='" + gpsdDBName + "';");
+            //dbConnect.execNoResultSet("update  haystack.gpsd set noOflines = " + lineNo + " where dbname ='" + gpsdDBName + "';");
+            sqlToExec = String.format("UPDATE %s.gpsd SET nooflines=%d WHERE gpsd_id=%d;", searchPath, lineNo, gpsdId);
+            dbConnect.execNoResultSet(sqlToExec);
             dbConnect.close();
 
         } catch (Exception e) {
+            hadErrors = true;
             log.error(e.toString());
         }
-    }
 
+        return hadErrors;
+    }
 
     private Boolean loadQueries(String extTableName, Integer QueryId, String userId) {
 
@@ -343,6 +357,7 @@ public  class CatalogService {
         }
         return extTableName;
     }
+
     public void createUser(String userId, String password, String org) {
         try {
 
@@ -371,12 +386,11 @@ public  class CatalogService {
             //String sql = "insert into haystack.run_log(run_id, , run_db, run_date, run_user) values(" + l_RunId +
             //        ",'" + credentials.getDatabase() + "', now(),'" + userId + "' );";
             //dbConnect.execNoResultSet(sql);
-        }catch(Exception e){
+        } catch (Exception e) {
             log.error(e.toString());
         }
         return l_RunId;
     }
-
 
     private void createSchema(String schemaName) throws SQLException, IOException {
 
@@ -418,14 +432,12 @@ public  class CatalogService {
                     exists = true;
                 }
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             log.error(e.toString());
         }
     }
-    public void saveQueries(ArrayList<Query> querylist){
+
+    public void saveQueries(ArrayList<Query> querylist) {
         // Save all queries in the Haystack Schema
     }
-
-
-
 }
