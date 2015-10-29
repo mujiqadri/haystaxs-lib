@@ -45,13 +45,13 @@ public class CatalogService {
     // Pass the QueryId, against which the QueryLogDates table will be populated
     // Pass the QueryLogDirectory, where the csv log files have been uncompressed
 
-    public boolean processQueryLog(String userId, Integer queryID, String queryLogDirectory) {
+    public boolean processQueryLog(int queryLogId, String userName, String queryLogDirectory) {
 
         //Integer runID = getRunId(userId);
 
-        String extTableNAme = createExternalTableForQueries(queryLogDirectory, queryID, userId);
+        String extTableName = createExternalTableForQueries(queryLogDirectory, queryLogId, userName);
 
-        Boolean loadResult = loadQueries(extTableNAme, queryID, userId);
+        Boolean loadResult = loadQueries(extTableName, queryLogId, userName);
 
         if (loadResult == true) {
             return true;
@@ -240,6 +240,7 @@ public class CatalogService {
                                         dbConnGPSD.execNoResultSet(sbBatchQueries.toString());
                                     } catch (Exception e) {
                                         hadErrors = true;
+                                        log.debug(e.getMessage());
                                         // do nothing
                                     }
                                     currBatchSize = 0;
@@ -251,6 +252,7 @@ public class CatalogService {
                                     dbConnGPSD.execNoResultSet(currQuery);
                                 } catch (Exception e) {
                                     hadErrors = true;
+                                    log.debug(e.getMessage());
                                     // do nothing
                                 }
                             }
