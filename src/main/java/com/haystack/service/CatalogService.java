@@ -303,15 +303,21 @@ public class CatalogService {
 
     }
 
+    // Pass parameter queryLogDir example /mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5
+    // Make sure gpfdist is running, and gpfdist_host and gpfdist_port are configures in config.properties file
+
     private String createExternalTableForQueries(String queryLogDirectory, Integer queryId, String userid) {
         String extTableName = "ext_" + queryId;
 
         try {
 
             //String qryFileDir = configProperties.properties.getProperty("qry.upload.directory");
+            String gpfdist_host = configProperties.properties.getProperty("gpfdist_server");
+            String gpfdist_port = configProperties.properties.getProperty("gpfdist_port");
+
 
             String sql = "\n" +
-                    "CREATE EXTERNAL WEB TABLE " + userid + "." + extTableName + "\n" +
+                    "CREATE EXTERNAL  TABLE " + userid + "." + extTableName + "\n" +
                     "(\n" +
                     "    logtime timestamp with time zone,\n" +
                     "    loguser text,\n" +
@@ -344,12 +350,11 @@ public class CatalogService {
                     "    logline int,\n" +
                     "    logstack text\n" +
                     ")\n" +
-                    "EXECUTE E'cat " + queryLogDirectory + "/*.csv' ON MASTER\n" +
-                    "FORMAT 'CSV' (DELIMITER AS ',' NULL AS '' QUOTE AS '\"');";
-
+                    " LOCATION ( 'gpfdist://" + gpfdist_host + ":" + gpfdist_port + queryLogDirectory + "/*.csv' )\n" +
+                    "FORMAT 'CSV' (delimiter ',' null '' escape '\"' quote '\"');";
 
             createSchema(userid);
-            dbConnect.execNoResultSet("DROP EXTERNAL  TABLE IF EXISTS " + userid + "." + extTableName + ";");
+            dbConnect.execNoResultSet("DROP EXTERNAL TABLE IF EXISTS " + userid + "." + extTableName + ";");
             dbConnect.execNoResultSet(sql);
 
         } catch (Exception e) {
