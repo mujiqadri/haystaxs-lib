@@ -21,7 +21,7 @@ public class GPSDTest extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        catalogService.processQueryLog(userId, queryID, queryLogDirectory);
+        //catalogService.processQueryLog(userId, queryID, queryLogDirectory);
 
         System.out.print("test finished");
     }
