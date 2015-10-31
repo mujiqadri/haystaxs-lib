@@ -13,7 +13,7 @@ public class GPSDTest extends TestCase {
     public void testQueryFile() throws Exception {
         String userId = "doctor";
         Integer queryID = 103;
-        String queryLogDirectory = "/upload/doctor@gmail.com/querylog/346346346";  // The zipped file should be unzipped in a temp folder on Master Node
+        String queryLogDirectory = "/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5";  // The zipped file should be unzipped in a temp folder on Master Node
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -26,7 +26,7 @@ public class GPSDTest extends TestCase {
         System.out.print("test finished");
     }
 
-    public void testName() throws Exception {
+    public void testGPSD() throws Exception {
 
         String userId = "doctor";
         String filename = "/Work/01-haystack/HayStack-1.2-22APR2015-JAR/HayStack-1.2-22APR2015/src/main/resources/gpsd-output-bmo.sql";
