@@ -100,8 +100,12 @@ public class CatalogService {
             DBConnectService tmpdbConn = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, this.sqlPath);
             tmpdbConn.connect(tmpCred);
 
-            tmpdbConn.execNoResultSet("CREATE DATABASE " + gpsdDBName + ";");
-            tmpdbConn.close();
+            try {
+                tmpdbConn.execNoResultSet("CREATE DATABASE " + gpsdDBName + ";");
+                tmpdbConn.close();
+            } catch (Exception e) {
+                log.debug("DATABASE:" + gpsdDBName + " already exists!\n");
+            }
 
             //======================================================
             // Add a line in GPSD for the new Database
@@ -207,6 +211,15 @@ public class CatalogService {
                         }
                         if (foundFirstDollar && foundSecondDollar && line.indexOf(";") >= 0) {
                             continueIgnore = false;
+                            foundFirstDollar = false;
+                            foundSecondDollar = false;
+                        }
+                        if (line.toUpperCase().indexOf("LANGUAGE") >= 0) {
+                            if (line.indexOf(";") >= 0) {
+                                foundFirstDollar = false;
+                                foundSecondDollar = false;
+                                continueIgnore = false; // If LANGUAGE is found, function end has reached
+                            }
                         }
                     }
 
@@ -238,6 +251,7 @@ public class CatalogService {
                                 if ((currBatchSize >= batchSize)) {
                                     try {
                                         dbConnGPSD.execNoResultSet(sbBatchQueries.toString());
+                                        log.debug(sbBatchQueries.toString());
                                     } catch (Exception e) {
                                         hadErrors = true;
                                         log.debug(e.getMessage());
@@ -250,6 +264,7 @@ public class CatalogService {
                             } else { // Not an insert query execute it;
                                 try {
                                     dbConnGPSD.execNoResultSet(currQuery);
+                                    log.debug(currQuery);
                                 } catch (Exception e) {
                                     hadErrors = true;
                                     log.debug(e.getMessage());
