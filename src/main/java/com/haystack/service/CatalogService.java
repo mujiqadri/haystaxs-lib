@@ -318,7 +318,7 @@ public class CatalogService {
         String schemaName = userId;
         ResultSet rs = null;
 
-        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','Queries','" + extTableName + "'," + QueryId + ");";
+        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','queries','" + extTableName + "'," + QueryId + ");";
         rs = dbConnect.execQuery(sql);
 
 
