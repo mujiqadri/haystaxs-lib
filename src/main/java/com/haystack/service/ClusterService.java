@@ -29,6 +29,7 @@ import java.util.Date;
  public class ClusterService {
 
     private String sqlPath;
+    private String haystackSchema;
     private Credentials credentials;
     private Properties properties;
 
@@ -46,6 +47,7 @@ import java.util.Date;
         try {
             this.properties = config.properties;
             this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
+            this.haystackSchema = this.properties.getProperty("main.schema");
             dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM,sqlPath);
             this.credentials = config.getUserDataCredentials();
             dbConnect.connect(credentials);
@@ -53,6 +55,22 @@ import java.util.Date;
             log.error(e.toString());
             throw e;
         }
+    }
+
+    public ClusterService(ConfigProperties config, String dbName) throws Exception {
+        try {
+            this.properties = config.properties;
+            this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
+            this.haystackSchema = this.properties.getProperty("main.schema");
+            dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, sqlPath);
+            this.credentials = config.getUserDataCredentials();
+            this.credentials.setDatabase(dbName);
+            dbConnect.connect(credentials);
+        } catch (Exception e) {
+            log.error(e.toString());
+            throw e;
+        }
+
     }
 
     // Read File with multiple SQL statements, spread across multiple lines, and includes comments
@@ -105,7 +123,17 @@ import java.util.Date;
             log.error(e.toString());
         }
     }
+
+    // This method gets the table details from statistics loaded from GPSD file
+    public Tables getgetTableDetailsfromStats() {
+
+        return null;
+    }
+
     // Get Tables from Cluster along with thier Structure and Stats
+    // This method works when connected to the cluster
+    // this doesnot work when GPSD file is uploaded since this information
+    // should be extracted from the stats - call getTableDetailsfromStats
     public Tables getTablesfromCluster() {
         Tables tablelist = new Tables();
 
@@ -122,12 +150,12 @@ import java.util.Date;
                     "left outer join \n" +
                     "\t(\n" +
                     "\tselect run_schema, max(run_date) as max_run_date\n" +
-                    "\tfrom haystack.run_log\n" +
+                    "\tfrom " + haystackSchema + ".run_log\n" +
                     "\tgroup by run_schema\n" +
                     "\t) AS B\n" +
                     "on A.schema_name = B.run_schema\n" +
                     "where A.schema_name not in ('pg_toast','pg_bitmapindex','madlib','pg_aoseg','pg_catalog'\n" +
-                    ",'gp_toolkit','information_schema','haystack')\n" +
+                    ",'gp_toolkit','information_schema','" + haystackSchema + "')\n" +
                     "and now() > COALESCE(B.max_run_date, '1900-01-01')::DATE  + INTERVAL '" + schemaThreshold.toString() + " days' ";
             ResultSet rsSchemas = dbConnect.execQuery(sqlSchemas);
 
@@ -139,7 +167,7 @@ import java.util.Date;
 
                 log.info("Processing tables in Schema:" + schemaName);
 
-                String sqlRunStats = "select haystack.capturetabledetailsgpdb('" + schemaName + "','" + this.properties.getProperty("haystack.ds_cluster.username") + "')";
+                String sqlRunStats = "select " + haystackSchema + ".capturetabledetailsgpdb('" + schemaName + "','" + this.properties.getProperty("haystack.ds_cluster.username") + "')";
                 ResultSet rsRes = dbConnect.execQuery(sqlRunStats);
                 while (rsRes.next()) {
                     sRunID = rsRes.getString(1);
@@ -165,7 +193,7 @@ import java.util.Date;
                     Float sizeOnDisk = rsSize.getFloat("SizeOnDisk");
                     Float compressRatio = rsSize.getFloat("CompressRatio");
 
-                    String sqlUpdTbl = "update haystack.tables set sizeInGB = " + sizeOnDisk +
+                    String sqlUpdTbl = "update " + haystackSchema + ".tables set sizeInGB = " + sizeOnDisk +
                             ", sizeInGBU = " + sizeOnDiskU + ", compressRatio = " + compressRatio +
                             " where schema_name = '" + schemaName + "' and table_name = '" + sTableName + "'" ;
                     dbConnect.execNoResultSet(sqlUpdTbl);
@@ -197,7 +225,7 @@ import java.util.Date;
 
 
             // Fetch all tables from within the current database and schema
-            String sqlQry = dbConnect.getSQLfromFile("getAllQueries");
+            String sqlQry = String.format(dbConnect.getSQLfromFile("getAllQueries"), haystackSchema);
 
             PreparedStatement ps = dbConnect.prepareStatement(sqlQry);
 
