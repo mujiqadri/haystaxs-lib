@@ -111,7 +111,7 @@ public class DBConnectService {
 
         this.conn = DriverManager.getConnection(this.getdbConnectURL(), this.user, this.pass);
 
-        log.info("DBConnect Success:" + this.host );
+        log.trace("DBConnect Success:" + this.host );
         return true;
     }
 

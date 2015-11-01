@@ -104,7 +104,7 @@ public class CatalogService {
                 tmpdbConn.execNoResultSet("CREATE DATABASE " + gpsdDBName + ";");
                 tmpdbConn.close();
             } catch (Exception e) {
-                log.debug("DATABASE:" + gpsdDBName + " already exists!\n");
+                log.error("DATABASE:" + gpsdDBName + " already exists!\n");
             }
 
             //======================================================
@@ -251,7 +251,7 @@ public class CatalogService {
                                 if ((currBatchSize >= batchSize)) {
                                     try {
                                         dbConnGPSD.execNoResultSet(sbBatchQueries.toString());
-                                        log.debug(sbBatchQueries.toString());
+                                        log.trace(sbBatchQueries.toString());
                                     } catch (Exception e) {
                                         hadErrors = true;
                                         log.debug(e.getMessage());
@@ -264,7 +264,7 @@ public class CatalogService {
                             } else { // Not an insert query execute it;
                                 try {
                                     dbConnGPSD.execNoResultSet(currQuery);
-                                    log.debug(currQuery);
+                                    log.trace(currQuery);
                                 } catch (Exception e) {
                                     hadErrors = true;
                                     log.debug(e.getMessage());
