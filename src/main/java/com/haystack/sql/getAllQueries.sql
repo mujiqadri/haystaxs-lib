@@ -7,5 +7,5 @@ SELECT
   loghost,
   logsegment,
   SQLText AS queryText
-FROM haystack.gp_query_log
+FROM %.gp_query_log
 ORDER BY length(SQLText) DESC
