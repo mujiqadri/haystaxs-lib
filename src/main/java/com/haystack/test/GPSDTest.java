@@ -11,8 +11,8 @@ import junit.framework.TestCase;
 public class GPSDTest extends TestCase {
 
     public void testQueryFile() throws Exception {
-        String userId = "doctor";
-        Integer querylogID = 103;
+
+        Integer querylogID = 7;
         String queryLogDirectory = "/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5";  // The zipped file should be unzipped in a temp folder on Master Node
 
         ConfigProperties configProperties = new ConfigProperties();

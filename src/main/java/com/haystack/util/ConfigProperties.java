@@ -28,6 +28,7 @@ public class ConfigProperties {
         }
     }
 
+
     public Credentials getHaystackDBCredentials() {
 
         Credentials credentials = new Credentials();
