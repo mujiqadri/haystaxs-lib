@@ -46,7 +46,7 @@ public class CatalogService {
     // ProcessWorkload Method, will take 1 GPSD DB and a date range and run Analysis on these queries
     // to generate a JSON model against the workload
 
-    public String processWorkload(Integer workloadId, Integer gpsdId, Date fromdate, Date todate) {
+    public boolean processWorkload(Integer workloadId) {
 
         try {
             // Get Database Name against GPSDId,-> DBName
@@ -55,7 +55,8 @@ public class CatalogService {
         } catch (Exception e) {
 
         }
-        return null;
+
+        return true;
     }
 
     // ProcessQueryLog Method, reads the unzipped query log file(s) from the Upload Directory
@@ -67,7 +68,7 @@ public class CatalogService {
         String userName = "";
         String extTableName = "";
         // Fetch userName from Users Table against the queryLogID
-        String sql = String.format("SELECT US.user_name FROM %s.query_log QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d", haystackSchema, haystackSchema, queryLogId);
+        String sql = String.format("SELECT US.user_name FROM %s.query_logs QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d", haystackSchema, haystackSchema, queryLogId);
 
         try {
             ResultSet rs = dbConnect.execQuery(sql);
