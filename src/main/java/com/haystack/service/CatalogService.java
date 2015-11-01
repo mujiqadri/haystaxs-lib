@@ -104,22 +104,8 @@ public class CatalogService {
 
             ArrayList<String> fileQueries = new ArrayList<String>();
 
-            String gpsdDBName = userName + String.format("%04d", gpsdId);
-            //String seqkey = "";
+            String gpsdDBName = userName.toLowerCase() + String.format("%04d", gpsdId);
             DBConnectService dbConnGPSD = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, this.sqlPath);
-
-
-
-            /*
-            ResultSet rsMaxdbId = dbConnect.execQuery("select lpad(((coalesce(max(seqkey),0)+1)::text), 4, '0')\n" +
-                    "from haystack.gpsd\n" +
-                    "where userid = '" + userName + "'");
-            while (rsMaxdbId.next()) {
-                seqkey = rsMaxdbId.getString(1);
-                gpsdDBName = userName + seqkey;
-            }
-            rsMaxdbId.close();
-            */
 
             // Create a database
             ConfigProperties tmpConfig = new ConfigProperties();
@@ -138,12 +124,6 @@ public class CatalogService {
             } catch (Exception e) {
                 log.debug("DATABASE:" + gpsdDBName + " already exists!\n");
             }
-
-            //======================================================
-            // Add a line in GPSD for the new Database
-            /*dbConnect.execNoResultSet(String.format("insert into %s.gpsd(user_id, dbname, seqkey) "
-                    + " values('" + userName + "','" + gpsdDBName + "'," + Integer.parseInt(seqkey) + ");");*/
-
 
             // Get GPSD Credentials
             ConfigProperties gpsdConfig = new ConfigProperties();
@@ -338,7 +318,7 @@ public class CatalogService {
         String schemaName = userId;
         ResultSet rs = null;
 
-        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','QueryLog','" + extTableName + "'," + QueryId + ");";
+        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','Queries','" + extTableName + "'," + QueryId + ");";
         rs = dbConnect.execQuery(sql);
 
 
