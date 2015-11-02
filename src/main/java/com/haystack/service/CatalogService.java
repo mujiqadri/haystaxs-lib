@@ -18,8 +18,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * CatalogService will deal with all functions related to storing and retrieving Model in haystack internal
- * Postgres database
+ * CatalogService will deal with all functions related to Cloud Based Files (GPSD and GPDB-Log Files)
+ * it will assume that we don't have a cluster to connect to in order get details of the queries
+ *
  */
 public class CatalogService {
     private ConfigProperties configProperties;
@@ -50,10 +51,13 @@ public class CatalogService {
 
         try {
             // Get Database Name against GPSDId,-> DBName
+            String sql = "SELECT gpsd_id, start_date, end_date, user_id FROM " + haystackSchema + ".workload WHERE workload_id = " + workloadId;
+            ResultSet rs = dbConnect.execQuery(sql);
 
 
         } catch (Exception e) {
 
+            log.error("Error in Processing WorkloadId:" + workloadId + " Exception:" + e.toString());
         }
 
         return true;
