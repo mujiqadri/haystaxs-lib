@@ -379,7 +379,7 @@ public class CatalogService {
         return extTableName;
     }
 
-    public void createUser(String userId, String password, String org) {
+    private void createUser(String userId, String password, String org) {
         try {
 
             String sql = "insert into " + haystackSchema + ".users(userid, password, organization, createddate) values('" + userId +
@@ -390,7 +390,7 @@ public class CatalogService {
         }
     }
 
-    public Integer getRunId(String userId) {
+    private Integer getRunId(String userId) {
         Integer l_RunId = 0;
         try {
             validateSchema();
@@ -435,7 +435,7 @@ public class CatalogService {
 
     }
 
-    public void validateSchema() {
+    private void validateSchema() {
         try {
             log.info("Validate schema");
             boolean exists = false;
@@ -458,7 +458,7 @@ public class CatalogService {
         }
     }
 
-    public void saveQueries(ArrayList<Query> querylist) {
+    private void saveQueries(ArrayList<Query> querylist) {
         // Save all queries in the Haystack Schema
     }
 }
