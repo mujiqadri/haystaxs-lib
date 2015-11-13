@@ -110,7 +110,6 @@ public class CatalogService {
     }
 
     public boolean executeGPSD(int gpsdId, String userName, String fileName) {
-        // TODO: This should come from the config file
         String searchPath = this.haystackSchema;
         int lineNo = 0;
         boolean hadErrors = false;
@@ -176,6 +175,7 @@ public class CatalogService {
                 int x = line.indexOf("--");
                 if (lineNo == 20) {
                     if (gpsd_date.length() == 0 && gpsd_version.length() == 0) {
+                        // NOTE: Shouldn't this error propogate up to the UI so that the user knows that the GPSD submitted was in an incorrect format
                         Exception e = new Exception("GPSD File not in proper format");
                         throw e;
                     }
