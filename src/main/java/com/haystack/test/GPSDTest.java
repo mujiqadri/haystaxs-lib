@@ -29,9 +29,9 @@ public class GPSDTest extends TestCase {
 
     public void testGPSD() throws Exception {
 
-        String userId = "doctor";
+        String userId = "CITI_EMEA";
         //String filename = "/Work/01-haystack/HayStack-1.2-22APR2015-JAR/HayStack-1.2-22APR2015/src/main/resources/gpsd-output-bmo.sql";
-        String filename = "/Work/uploads/mujtaba_dot_qadri_at_gmail_dot_com/gpsd/ea306c13-f1c1-40ef-b520-5f764e7b5ec4.sql";
+        String filename = "/Work/uploads/mujtaba_dot_qadri_at_gmail_dot_com/gpsd/gpsd_emea_output_10302105.sql";
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -39,10 +39,22 @@ public class GPSDTest extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        catalogService.executeGPSD(16, userId, filename);
+        catalogService.executeGPSD(19, userId, filename);
 
         System.out.print("test finished");
     }
 
+    public void testWorkload() throws Exception {
+        Integer workloadId = 1;
+
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        CatalogService catalogService = new CatalogService(configProperties);
+
+        catalogService.processWorkload(workloadId);
+        System.out.print("test finished");
+    }
 
 }

@@ -1,6 +1,7 @@
 package com.haystack.service;
 
 import com.haystack.domain.Query;
+import com.haystack.domain.Tables;
 import com.haystack.parser.statement.select.IntersectOp;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
@@ -20,7 +21,8 @@ import java.util.List;
 /**
  * CatalogService will deal with all functions related to Cloud Based Files (GPSD and GPDB-Log Files)
  * it will assume that we don't have a cluster to connect to in order get details of the queries
- *
+ * storing and retrieving Model in haystack internal
+ * Postgres database
  */
 public class CatalogService {
     private ConfigProperties configProperties;
@@ -51,9 +53,20 @@ public class CatalogService {
 
         try {
             // Get Database Name against GPSDId,-> DBName
-            String sql = "SELECT gpsd_id, start_date, end_date, user_id FROM " + haystackSchema + ".workload WHERE workload_id = " + workloadId;
-            ResultSet rs = dbConnect.execQuery(sql);
+            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db\n" +
+                    "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B\n" +
+                    "where A.gpsd_id = B.gpsd_id AND A.workload_id = " + workloadId;
 
+            ResultSet rs = dbConnect.execQuery(sql);
+            rs.next();
+
+            String gpsd_db = rs.getString("gpsd_db");
+            Integer gpsd_id = rs.getInt("gpsd_id");
+
+            ClusterService clusterService = new ClusterService(this.configProperties, gpsd_db);
+            Tables tablelist = clusterService.getTablefromGPDBStats(gpsd_id);
+
+            rs.close();
 
         } catch (Exception e) {
 
@@ -462,7 +475,7 @@ public class CatalogService {
         }
     }
 
-    private void saveQueries(ArrayList<Query> querylist) {
+    public void saveQueries(ArrayList<Query> querylist) {
         // Save all queries in the Haystack Schema
     }
 }

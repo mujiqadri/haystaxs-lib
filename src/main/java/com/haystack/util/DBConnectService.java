@@ -48,6 +48,10 @@ public class DBConnectService {
         this.pass = cred.getPassword();
     }
 
+    public String getDB() {
+        return this.dbName;
+    }
+
     private String getdbConnectURL() {
         StringBuilder url = new StringBuilder();
         switch (this.dbTYPE) {

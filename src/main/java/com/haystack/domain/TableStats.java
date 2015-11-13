@@ -12,13 +12,14 @@ public class TableStats {
     public String storageMode;
     public String compressType;
     public Integer compressLevel;
-    public BigInteger noOfRows;
+    public float noOfRows;
     public float sizeOnDisk;
     public float sizeUnCompressed;
     public float compressionRatio;
     public Integer noOfColumns;
     public boolean isPartitioned;
     public BigInteger blockSize;
+    public Integer relPages;
     public String sizeForDisplayCompressed;  // Stores the scale of the size MB / GB/ TB
     public String sizeForDisplayUnCompressed;  // Stores the scale of the size MB / GB/ TB
 
@@ -33,6 +34,7 @@ public class TableStats {
         usageFrequency = 0;
         executionTime = 0.0;
         workloadScore = 0;
+        relPages = 0;
     }
     public void addExecutionTime( Double timeSlice){
         executionTime += timeSlice;
@@ -54,5 +56,16 @@ public class TableStats {
     }
     public float getModelScore(){
         return modelScore;
+    }
+
+    public void addChildStats(Integer iRelPages, float iRelTuples) {
+        if (iRelPages > 0) {
+            relPages = relPages + iRelPages;
+            sizeOnDisk = ((relPages * 32) / (1024 * 1024));
+            sizeUnCompressed = sizeOnDisk;
+        }
+        if (iRelTuples > 0) {
+            noOfRows = noOfRows + (iRelTuples);
+        }
     }
 }

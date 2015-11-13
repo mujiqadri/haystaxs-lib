@@ -24,6 +24,11 @@ public class Column {
     private String resolvedTableName;
     private String resolvedSchemaName;
 
+    // Partition columns
+    public Boolean isPartitioned;
+    public int partitionLevel;
+    public int positionInPartitionKey;
+
     public Column()
     {
         usageFrequency = 0;

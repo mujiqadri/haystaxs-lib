@@ -1,9 +1,9 @@
 package com.haystack.domain;
 
-import java.util.List;
+import java.util.HashMap;
 /**
  * Created by qadrim on 15-03-04.
  */
 public class Partitions {
-    public List<Table> partitions;
+    public HashMap<String, Partition> partitions;
 }

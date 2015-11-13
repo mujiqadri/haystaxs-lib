@@ -125,9 +125,18 @@ import java.util.Date;
     }
 
     // This method gets the table details from statistics loaded from GPSD file
-    public Tables getgetTableDetailsfromStats() {
+    public Tables getTablefromGPDBStats(Integer gpsd_id) {
+        Tables tablelist = new Tables();
+        try {
+            String jsonTables = tablelist.loadfromStats(dbConnect);
 
-        return null;
+            String sql = "update " + haystackSchema + ".gpsd set json ='" + jsonTables + "' where gpsd_id = " + gpsd_id + ";";
+            dbConnect.execQuery(sql);
+
+        } catch (Exception e) {
+            log.error("Error while fetching table details from GPSD:" + e.toString());
+        }
+        return tablelist;
     }
 
     // Get Tables from Cluster along with thier Structure and Stats

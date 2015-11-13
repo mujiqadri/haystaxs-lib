@@ -22,6 +22,7 @@ public class Table {
     public HashMap<String, Column> dk;
     public HashMap<String, Column> partitionColumn;
     public HashMap<String, Join> joins;
+    public HashMap<String, Partition> partitions;
 
     static Logger log = LoggerFactory.getLogger(Table.class.getName());
 
@@ -32,7 +33,7 @@ public class Table {
         dk = new HashMap<String, Column>();
         partitionColumn = new HashMap<String, Column>();
         joins = new HashMap<String, Join>();
-
+        partitions = new HashMap<String, Partition>();
 
     }
 
