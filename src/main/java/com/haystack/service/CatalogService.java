@@ -52,7 +52,7 @@ public class CatalogService {
     // ProcessWorkload Method, will take 1 GPSD DB and a date range and run Analysis on these queries
     // to generate a JSON model against the workload
 
-    public boolean processWorkload(Integer workloadId) {
+    public String processWorkload(Integer workloadId) {
 
         try {
             // Get Database Name against GPSDId,-> DBName
@@ -101,15 +101,18 @@ public class CatalogService {
             ms.scoreModel();
             String model_json = ms.getModelJSON();
 
+
             sql = "update " + haystackSchema + ".workloads set model_json ='" + model_json + "' where workload_id =" + workloadId + ";";
             dbConnect.execNoResultSet(sql);
+
+            return model_json;
 
         } catch (Exception e) {
 
             log.error("Error in Processing WorkloadId:" + workloadId + " Exception:" + e.toString());
         }
 
-        return true;
+        return null;
     }
 
     // ProcessQueryLog Method, reads the unzipped query log file(s) from the Upload Directory
