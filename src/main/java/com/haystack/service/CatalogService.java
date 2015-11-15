@@ -313,6 +313,9 @@ public class CatalogService {
                     }
                 }
             }
+            ClusterService clusterService = new ClusterService(this.configProperties, gpsdDBName);
+            Tables tablelist = clusterService.getTablefromGPDBStats(gpsdId);
+            String json_res = tablelist.getJSON();
             dbConnGPSD.close();
             //======================================================
             // Update  GPSD  with the Header Information for the new Database

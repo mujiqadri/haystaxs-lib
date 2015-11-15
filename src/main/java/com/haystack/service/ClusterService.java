@@ -130,8 +130,8 @@ import java.util.Date;
         try {
             String jsonTables = tablelist.loadfromStats(dbConnect);
 
-            String sql = "update " + haystackSchema + ".gpsd set json ='" + jsonTables + "' where gpsd_id = " + gpsd_id + ";";
-            dbConnect.execQuery(sql);
+            //String sql = "update " + haystackSchema + ".gpsd set json ='" + jsonTables + "' where gpsd_id = " + gpsd_id + ";";
+            //dbConnect.execQuery(sql);
 
         } catch (Exception e) {
             log.error("Error while fetching table details from GPSD:" + e.toString());
