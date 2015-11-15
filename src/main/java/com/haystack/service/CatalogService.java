@@ -2,6 +2,7 @@ package com.haystack.service;
 
 import com.haystack.domain.Query;
 import com.haystack.domain.Tables;
+import com.haystack.parser.expression.TimestampValue;
 import com.haystack.parser.statement.select.IntersectOp;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
@@ -15,6 +16,7 @@ import java.io.IOException;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +33,7 @@ public class CatalogService {
     private String haystackSchema;
     private static Logger log = LoggerFactory.getLogger(CatalogService.class.getName());
     private DBConnectService dbConnect;
+    private String queryTblName = "queries";
 
     public CatalogService(ConfigProperties configProperties) {
         this.configProperties = configProperties;
@@ -53,20 +56,53 @@ public class CatalogService {
 
         try {
             // Get Database Name against GPSDId,-> DBName
-            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db\n" +
-                    "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B\n" +
-                    "where A.gpsd_id = B.gpsd_id AND A.workload_id = " + workloadId;
+            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, C.user_name\n" +
+                    "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
+                    "where A.gpsd_id = B.gpsd_id and C.user_id = A.user_id AND A.workload_id = " + workloadId;
 
             ResultSet rs = dbConnect.execQuery(sql);
             rs.next();
 
             String gpsd_db = rs.getString("gpsd_db");
             Integer gpsd_id = rs.getInt("gpsd_id");
+            Date startDate = rs.getDate("start_date");
+            Date endDate = rs.getDate("end_date");
+            String schemaName = rs.getString("user_name");
 
             ClusterService clusterService = new ClusterService(this.configProperties, gpsd_db);
             Tables tablelist = clusterService.getTablefromGPDBStats(gpsd_id);
 
+            ModelService ms = new ModelService();
+
+            // Set the Cached Tables into the Model for future annotation
+            ms.setTableList(tablelist);
+
             rs.close();
+
+            // Fetch the queries based on start and end date
+            sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
+                    "' and logsessiontime <='" + endDate + "'";
+            ResultSet rsQry = dbConnect.execQuery(sql);
+
+            while (rsQry.next()) {
+                String currQry = rsQry.getString("sql");
+                Timestamp duration = rsQry.getTimestamp("logduration");
+                Integer durationSeconds = rsQry.getInt("duration_seconds");
+
+                String[] arrQry = currQry.split(";");
+
+                for (int i = 0; i < arrQry.length; i++) {
+                    String sQry = arrQry[i];
+                    ms.processSQL(sQry, durationSeconds);
+                }
+            }
+            rsQry.close();
+
+            ms.scoreModel();
+            String model_json = ms.getModelJSON();
+
+            sql = "update " + haystackSchema + ".workloads set model_json ='" + model_json + "' where workload_id =" + workloadId + ";";
+            dbConnect.execNoResultSet(sql);
 
         } catch (Exception e) {
 
@@ -108,6 +144,74 @@ public class CatalogService {
         }
 
     }
+
+    private void loadQueries(String extTableName, Integer QueryId, String userId) throws SQLException {
+
+        String strRunId = String.format("%05d", QueryId);
+        String queryLogTableName = userId + ".qry" + strRunId;
+        String schemaName = userId;
+        ResultSet rs = null;
+
+        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','" + queryTblName + "','" + extTableName + "'," + QueryId + ");";
+        rs = dbConnect.execQuery(sql);
+
+
+    }
+
+    // Pass parameter queryLogDir example /mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5
+    // Make sure gpfdist is running, and gpfdist_host and gpfdist_port are configures in config.properties file
+
+    private String createExternalTableForQueries(String queryLogDirectory, Integer queryId, String userid) throws SQLException, IOException {
+        String extTableName = "ext_" + queryId;
+
+        String gpfdist_host = configProperties.properties.getProperty("gpfdist_server");
+        String gpfdist_port = configProperties.properties.getProperty("gpfdist_port");
+
+
+        String sql = "\n" +
+                "CREATE EXTERNAL  TABLE " + userid + "." + extTableName + "\n" +
+                "(\n" +
+                "    logtime timestamp with time zone,\n" +
+                "    loguser text,\n" +
+                "    logdatabase text,\n" +
+                "    logpid text,\n" +
+                "    logthread text,\n" +
+                "    loghost text,\n" +
+                "    logport text,\n" +
+                "    logsessiontime timestamp with time zone,\n" +
+                "    logtransaction int,\n" +
+                "    logsession text,\n" +
+                "    logcmdcount text,\n" +
+                "    logsegment text,\n" +
+                "    logslice text,\n" +
+                "    logdistxact text,\n" +
+                "    loglocalxact text,\n" +
+                "    logsubxact text,\n" +
+                "    logseverity text,\n" +
+                "    logstate text,\n" +
+                "    logmessage text,\n" +
+                "    logdetail text,\n" +
+                "    loghint text,\n" +
+                "    logquery text,\n" +
+                "    logquerypos int,\n" +
+                "    logcontext text,\n" +
+                "    logdebug text,\n" +
+                "    logcursorpos int,\n" +
+                "    logfunction text,\n" +
+                "    logfile text,\n" +
+                "    logline int,\n" +
+                "    logstack text\n" +
+                ")\n" +
+                " LOCATION ( 'gpfdist://" + gpfdist_host + ":" + gpfdist_port + queryLogDirectory + "/*.csv' )\n" +
+                "FORMAT 'CSV' (delimiter ',' null '' escape '\"' quote '\"');";
+
+        createSchema(userid);
+        dbConnect.execNoResultSet("DROP EXTERNAL TABLE IF EXISTS " + userid + "." + extTableName + ";");
+        dbConnect.execNoResultSet(sql);
+
+        return extTableName;
+    }
+
 
     public boolean executeGPSD(int gpsdId, String userName, String fileName) {
         String searchPath = this.haystackSchema;
@@ -330,73 +434,6 @@ public class CatalogService {
         }
 
         return hadErrors;
-    }
-
-    private void loadQueries(String extTableName, Integer QueryId, String userId) throws SQLException {
-
-        String strRunId = String.format("%05d", QueryId);
-        String queryLogTableName = userId + ".qry" + strRunId;
-        String schemaName = userId;
-        ResultSet rs = null;
-
-        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','queries','" + extTableName + "'," + QueryId + ");";
-        rs = dbConnect.execQuery(sql);
-
-
-    }
-
-    // Pass parameter queryLogDir example /mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5
-    // Make sure gpfdist is running, and gpfdist_host and gpfdist_port are configures in config.properties file
-
-    private String createExternalTableForQueries(String queryLogDirectory, Integer queryId, String userid) throws SQLException, IOException {
-        String extTableName = "ext_" + queryId;
-
-        String gpfdist_host = configProperties.properties.getProperty("gpfdist_server");
-        String gpfdist_port = configProperties.properties.getProperty("gpfdist_port");
-
-
-        String sql = "\n" +
-                "CREATE EXTERNAL  TABLE " + userid + "." + extTableName + "\n" +
-                "(\n" +
-                "    logtime timestamp with time zone,\n" +
-                "    loguser text,\n" +
-                "    logdatabase text,\n" +
-                "    logpid text,\n" +
-                "    logthread text,\n" +
-                "    loghost text,\n" +
-                "    logport text,\n" +
-                "    logsessiontime timestamp with time zone,\n" +
-                "    logtransaction int,\n" +
-                "    logsession text,\n" +
-                "    logcmdcount text,\n" +
-                "    logsegment text,\n" +
-                "    logslice text,\n" +
-                "    logdistxact text,\n" +
-                "    loglocalxact text,\n" +
-                "    logsubxact text,\n" +
-                "    logseverity text,\n" +
-                "    logstate text,\n" +
-                "    logmessage text,\n" +
-                "    logdetail text,\n" +
-                "    loghint text,\n" +
-                "    logquery text,\n" +
-                "    logquerypos int,\n" +
-                "    logcontext text,\n" +
-                "    logdebug text,\n" +
-                "    logcursorpos int,\n" +
-                "    logfunction text,\n" +
-                "    logfile text,\n" +
-                "    logline int,\n" +
-                "    logstack text\n" +
-                ")\n" +
-                " LOCATION ( 'gpfdist://" + gpfdist_host + ":" + gpfdist_port + queryLogDirectory + "/*.csv' )\n" +
-                "FORMAT 'CSV' (delimiter ',' null '' escape '\"' quote '\"');";
-
-        createSchema(userid);
-        dbConnect.execNoResultSet("DROP EXTERNAL TABLE IF EXISTS " + userid + "." + extTableName + ";");
-        dbConnect.execNoResultSet(sql);
-
-        return extTableName;
     }
 
     private void createUser(String userId, String password, String org) {

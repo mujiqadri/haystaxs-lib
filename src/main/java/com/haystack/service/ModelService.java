@@ -68,16 +68,21 @@ public class ModelService {
     public String getModelJSON(){
         return tablelist.getJSON();
     }
-    public void processSQL(Query query, double executionTime ) throws Exception{
+
+    public void processSQL(Query query, double executionTime) throws Exception {
+        processSQL(query.getQueryText(), executionTime);
+    }
+
+    public void processSQL(String query, double executionTime) throws Exception {
         TablesNamesFinder currtablesNF = new TablesNamesFinder();
         try {
             // TODO: Parse Statement and annotate the input Query object with details
             // 1.   Note: Some queries will be executed with the search_path set, so table name might not have schema and will
             //      have to manually resolve this (if there are collisions then errors have to be logged
             log.info("Starting ModelService.processSQL");
-            log.debug("Processing SQL:\n" + query.getQueryText());
+            log.debug("Processing SQL:\n" + query);
 
-            String sqls = query.getQueryText();
+            String sqls = query;
             Statement statement = CCJSqlParserUtil.parse(sqls);
             Select selectStatement = (Select) statement;
 
@@ -111,7 +116,7 @@ public class ModelService {
         }
         catch(Exception e){
             // Log Parsing Error
-            log.error("SQL:" + query.getQueryText());
+            log.error("SQL:" + query);
             log.error("PARSING ERROR:" + e.toString());
         }
     }
