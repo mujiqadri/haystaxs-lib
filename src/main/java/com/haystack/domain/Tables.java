@@ -191,7 +191,7 @@ public class Tables  {
                 tbl.stats.relPages = rsTbl.getInt("relpages");
                 tbl.stats.noOfColumns = Integer.parseInt(rsTbl.getString("noOfColumns"));
                 tbl.stats.isColumnar = (rsTbl.getString("IsColumnar").equals("t")) ? true : false;
-                tbl.stats.noOfRows = rsTbl.getFloat("NoOfRows");
+                tbl.stats.noOfRows = rsTbl.getDouble("NoOfRows");
                 tbl.stats.sizeOnDisk = Float.parseFloat(rsTbl.getString("sizeinGB"));
                 tbl.stats.sizeUnCompressed = Float.parseFloat(rsTbl.getString("sizeinGB"));
                 tbl.stats.compressType = rsTbl.getString("compressType");
@@ -216,12 +216,11 @@ public class Tables  {
                     ResultSet rsPar = dbConn.execQuery(partSQL);
 
                     while (rsPar.next()) {
-                        float pRelTuples = rsPar.getFloat("reltuples");
-                        Integer pRelPages = rsPar.getInt("relpages");
-                        String parentPartitionTableName = rsPar.getString("parentpartitiontablename");
-                        String parentPartitionName = rsPar.getString("parentpartitionname");
+
 
                         Partition partition = new Partition();
+                        partition.relPages = rsPar.getInt("relpages");
+                        partition.relTuples = rsPar.getInt("reltuples");
                         partition.tableName = rsPar.getString("partitiontablename");
                         partition.partitionName = rsPar.getString("partitionname");
                         partition.type = rsPar.getString("partitiontype");
@@ -237,11 +236,21 @@ public class Tables  {
                         partition.isDefault = rsPar.getBoolean("partitionisdefault");
                         partition.boundary = rsPar.getString("partitionboundary");
 
-                        tbl.stats.addChildStats(pRelPages, pRelTuples);
-                        tbl.partitions.put(partition.tableName, partition);
+                        partition.parentPartitionTableName = rsPar.getString("parentpartitiontablename");
+                        partition.parentPartitionName = rsPar.getString("parentpartitionname");
+
+                        tbl.stats.addChildStats(partition.relPages, partition.relTuples);
+                        tbl.addPartition(tbl.partitions, partition);
+
 
                     }
                     rsPar.close();
+
+                    // Recalculate TableSize based on partitions
+                    tbl.stats.sizeOnDisk = ((tbl.stats.relPages * 32) / (1024 * 1024));
+                    tbl.stats.sizeUnCompressed = tbl.stats.sizeOnDisk;
+                    tbl.stats.sizeForDisplayCompressed = getSizePretty(tbl.stats.sizeOnDisk); // Normalize size and unit to display atleast 2 digits
+                    tbl.stats.sizeForDisplayUnCompressed = getSizePretty(tbl.stats.sizeUnCompressed); // Normalize size and unit to display atleast 2 digits
                 }
 
                 // Get Column Details
@@ -323,7 +332,7 @@ public class Tables  {
                 tbl.stats.storageMode = rsTbl.getString("storage_mode");
                 tbl.stats.noOfColumns = Integer.parseInt(rsTbl.getString("noofcols"));
                 tbl.stats.isColumnar =  (rsTbl.getString("IsColumnar").equals("t")) ? true : false;
-                tbl.stats.noOfRows = rsTbl.getFloat("NoOfRows");
+                tbl.stats.noOfRows = rsTbl.getDouble("NoOfRows");
                 tbl.stats.sizeOnDisk = Float.parseFloat(rsTbl.getString("sizeinGB"));
                 tbl.stats.sizeUnCompressed = Float.parseFloat(rsTbl.getString("sizeinGBu"));
                 tbl.stats.compressType = rsTbl.getString("compressType");

@@ -1,6 +1,5 @@
 package com.haystack.domain;
 
-import com.haystack.parser.statement.select.IntersectOp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +36,35 @@ public class Table {
 
     }
 
+
+    // Add Partition
+    public void addPartition(HashMap<String, Partition> partitions, Partition partition) {
+        try {
+            if (partition.level == 0) {
+                this.partitions.put(partition.tableName, partition);
+            } else {
+                String parentPartitionTbl = partition.parentPartitionTableName;
+
+                // Else Find the parentPartition and then add it to the child
+                for (Map.Entry<String, Partition> entry : partitions.entrySet()) {
+                    // Loop through partition to find substring of partitiontablename
+                    String key = entry.getKey();
+                    Partition value = entry.getValue();
+
+                    if (parentPartitionTbl.contains(key)) {
+                        // Check if level matches completely
+                        if (value.level == partition.level - 1) {
+                            value.childPartitions.put(partition.tableName, partition);
+                        } else { // go deep
+                            addPartition(value.childPartitions, partition);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error in adding partition to Table:" + tableName + "==" + e.toString());
+        }
+    }
 
     // Add Join
     public void addJoin(Join join){

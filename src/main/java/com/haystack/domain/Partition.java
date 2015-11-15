@@ -22,5 +22,14 @@ public class Partition {
     Boolean isDefault;
     String boundary;
     HashMap<String, Partition> childPartitions;
+    Integer relTuples;
+    Integer relPages;
+    String parentPartitionTableName;
+    String parentPartitionName;
+    String sizeForDisplay;
+
+    public Partition() {
+        childPartitions = new HashMap<String, Partition>();
+    }
 
 }

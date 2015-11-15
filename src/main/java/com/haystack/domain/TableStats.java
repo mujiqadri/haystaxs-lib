@@ -12,7 +12,7 @@ public class TableStats {
     public String storageMode;
     public String compressType;
     public Integer compressLevel;
-    public float noOfRows;
+    public Double noOfRows;
     public float sizeOnDisk;
     public float sizeUnCompressed;
     public float compressionRatio;
@@ -58,7 +58,7 @@ public class TableStats {
         return modelScore;
     }
 
-    public void addChildStats(Integer iRelPages, float iRelTuples) {
+    public void addChildStats(Integer iRelPages, Integer iRelTuples) {
         if (iRelPages > 0) {
             relPages = relPages + iRelPages;
             sizeOnDisk = ((relPages * 32) / (1024 * 1024));
