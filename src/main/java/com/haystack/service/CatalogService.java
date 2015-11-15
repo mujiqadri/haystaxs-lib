@@ -81,7 +81,7 @@ public class CatalogService {
 
             // Fetch the queries based on start and end date
             sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
-                    "' and logsessiontime <='" + endDate + "'";
+                    "' and logsessiontime <='" + endDate + "' and  EXTRACT(EPOCH FROM logduration) > 0";
             ResultSet rsQry = dbConnect.execQuery(sql);
 
             while (rsQry.next()) {

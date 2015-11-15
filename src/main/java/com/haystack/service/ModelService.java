@@ -3,6 +3,7 @@ package com.haystack.service;
 
 import com.haystack.domain.*;
 
+import com.haystack.parser.statement.update.Update;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,7 +74,7 @@ public class ModelService {
         processSQL(query.getQueryText(), executionTime);
     }
 
-    public void processSQL(String query, double executionTime) throws Exception {
+    public boolean processSQL(String query, double executionTime) throws Exception {
         TablesNamesFinder currtablesNF = new TablesNamesFinder();
         try {
             // TODO: Parse Statement and annotate the input Query object with details
@@ -84,9 +85,34 @@ public class ModelService {
 
             String sqls = query;
             Statement statement = CCJSqlParserUtil.parse(sqls);
-            Select selectStatement = (Select) statement;
+            Select selectStatement = null;
+            Update updateStatement = null;
+            String stmtType = "";
 
-            List<String> strTableList = currtablesNF.getSemantics(selectStatement, "1");
+            try {
+                selectStatement = (Select) statement;
+                stmtType = "SELECT";
+            } catch (Exception e) {
+                log.debug("Not a Select Statement :" + e.toString());
+            }
+
+            try {
+                updateStatement = (Update) statement;
+                stmtType = "UPDATE";
+            } catch (Exception e) {
+                log.debug("Not an Update Statement :" + e.toString());
+            }
+
+            List<String> strTableList;
+
+            if (stmtType == "SELECT ") {
+                strTableList = currtablesNF.getSemantics(selectStatement, "1");
+            } else if (stmtType == "UPDATE") {
+                strTableList = currtablesNF.getSemantics(updateStatement, "1");
+            } else {
+                log.error("Statement Not Supported :" + statement.toString());
+                return false;
+            }
 
             // === Resolve table schema name if missing
             for (int i = 0; i < currtablesNF.tables.size(); i++) {
@@ -113,11 +139,13 @@ public class ModelService {
             log.debug("=============== CONDITIONS EXTRACTED =================");
 
             log.info("ModelService.processSQL Complete");
+            return true;
         }
         catch(Exception e){
             // Log Parsing Error
             log.error("SQL:" + query);
             log.error("PARSING ERROR:" + e.toString());
+            return false;
         }
     }
 

@@ -12,8 +12,9 @@ public class GPSDTest extends TestCase {
 
     public void testQueryFile() throws Exception {
 
-        Integer querylogID = 7;
-        String queryLogDirectory = "/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5";  // The zipped file should be unzipped in a temp folder on Master Node
+        Integer querylogID = 8;
+        //String queryLogDirectory = "/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5";  // The zipped file should be unzipped in a temp folder on Master Node
+        String queryLogDirectory = "/querylogs";
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -53,7 +54,7 @@ public class GPSDTest extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        catalogService.processWorkload(workloadId);
+        String result = catalogService.processWorkload(workloadId);
         System.out.print("test finished");
     }
 

@@ -293,7 +293,7 @@ public class Tables  {
             }
             rsTbl.close();
 
-            jsonResult = getJSON();
+            //jsonResult = getJSON();
 
         } catch (Exception e) {
             log.error("Error in loading tables from Stats" + e.toString());

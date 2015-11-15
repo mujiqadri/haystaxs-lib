@@ -188,7 +188,7 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
      * @param update
      * @return
      */
-    public List<String> getTableList(Update update, String level) {
+    public List<String> getSemantics(Update update, String level) {
         init();
         for (Table table : update.getTables()) {
             otherItemNames.add(table.getName());
