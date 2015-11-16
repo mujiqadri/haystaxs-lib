@@ -102,8 +102,8 @@ public class CatalogService {
             String model_json = ms.getModelJSON();
 
 
-            sql = "update " + haystackSchema + ".workloads set model_json ='" + model_json + "' where workload_id =" + workloadId + ";";
-            dbConnect.execNoResultSet(sql);
+            //sql = "update " + haystackSchema + ".workloads set model_json ='" + model_json + "' where workload_id =" + workloadId + ";";
+            //dbConnect.execNoResultSet(sql);
 
             return model_json;
 
