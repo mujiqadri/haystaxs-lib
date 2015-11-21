@@ -308,8 +308,8 @@ public class CatalogService {
                             // Update  GPSD  with the Header Information for the new Database
                             /*dbConnect.execNoResultSet(String.format("update haystack.gpsd set gpsd_db = '" + gpsd_DB + "', gpsd_date = '" + gpsd_date + "' , gpsd_params='"
                                     + gpsd_params + "', gpsd_version = '" + gpsd_version + "', filename ='" + fileName + "' where dbname ='" + gpsdDBName + "';");*/
-                            sqlToExec = String.format("UPDATE %s.gpsd SET gpsd_db='%s', gpsd_date='%s', gpsd_params='%s', gpsd_version='%s' WHERE gpsd_id = %d;",
-                                    searchPath, gpsdDBName, gpsd_date, gpsd_params, gpsd_version, gpsdId);
+                            sqlToExec = String.format("UPDATE %s.gpsd SET dbname='%s', gpsd_date='%s', gpsd_params='%s', gpsd_version='%s' WHERE gpsd_id = %d;",
+                                    searchPath, gpsd_DB, gpsd_date, gpsd_params, gpsd_version, gpsdId);
                             dbConnect.execNoResultSet(sqlToExec);
                         }
                     }
