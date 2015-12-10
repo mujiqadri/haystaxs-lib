@@ -53,7 +53,7 @@ public class MainService {
                 log.info("Processing Query # " + i);
                 Query query = clusterService.querylist.get(i);
 
-                modelService.processSQL(query,0);
+                modelService.processSQL(query, 0, 3);
             }
 
         } catch(Exception e){

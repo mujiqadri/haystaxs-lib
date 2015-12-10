@@ -7,6 +7,7 @@ import com.haystack.parser.statement.select.IntersectOp;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
+import com.haystack.util.HSException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,18 +54,20 @@ public class CatalogService {
     // to generate a JSON model against the workload
 
     public String processWorkload(Integer workloadId) {
-
+        Integer user_id = null;
         try {
             // Get Database Name against GPSDId,-> DBName
-            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, C.user_name\n" +
+            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, C.user_id, C.user_name\n" +
                     "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
                     "where A.gpsd_id = B.gpsd_id and C.user_id = A.user_id AND A.workload_id = " + workloadId;
 
             ResultSet rs = dbConnect.execQuery(sql);
+
             rs.next();
 
             String gpsd_db = rs.getString("gpsd_db");
             Integer gpsd_id = rs.getInt("gpsd_id");
+            user_id = rs.getInt("user_id");
             Date startDate = rs.getDate("start_date");
             Date endDate = rs.getDate("end_date");
             String schemaName = rs.getString("user_name");
@@ -93,7 +96,7 @@ public class CatalogService {
 
                 for (int i = 0; i < arrQry.length; i++) {
                     String sQry = arrQry[i];
-                    ms.processSQL(sQry, durationSeconds);
+                    ms.processSQL(sQry, durationSeconds, user_id);
                 }
             }
             rsQry.close();
@@ -108,8 +111,8 @@ public class CatalogService {
             return model_json;
 
         } catch (Exception e) {
-
             log.error("Error in Processing WorkloadId:" + workloadId + " Exception:" + e.toString());
+            HSException hsException = new HSException("CatalogService.processWorkload()", "Error in processing workload", e.toString(), "WorkloadId=" + workloadId, user_id);
         }
 
         return null;
@@ -122,27 +125,35 @@ public class CatalogService {
     public boolean processQueryLog(int queryLogId, String queryLogDirectory) {
 
         String userName = "";
+        Integer userId = null;
         String extTableName = "";
         // Fetch userName from Users Table against the queryLogID
-        String sql = String.format("SELECT US.user_name FROM %s.query_logs QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d", haystackSchema, haystackSchema, queryLogId);
+        String sql = String.format("SELECT US.user_name, US.user_id FROM %s.query_logs QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d", haystackSchema, haystackSchema, queryLogId);
 
         try {
             ResultSet rs = dbConnect.execQuery(sql);
             rs.next();
             userName = rs.getString("user_name");
+            userId = rs.getInt("user_id");
         } catch (SQLException e) {
+            HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to fetch userNAme", e.toString(), "QueryLogId=" + queryLogId, userId);
             log.error("Unable to fetch user_id, Exception:" + e.toString());
         }
         try {
             extTableName = createExternalTableForQueries(queryLogDirectory, queryLogId, userName);
         } catch (Exception e) {
             log.error("Unable to create external table for queries, Exception:" + e.toString());
+            HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to create external table for queries.", e.toString(),
+                    "QueryLogId=" + queryLogId + ", QueryLogDirectory=" + queryLogDirectory, userId);
+
         }
         try {
             loadQueries(extTableName, queryLogId, userName);
             return true;
         } catch (Exception e) {
             log.error("Unable to populate queries, Exception:" + e.toString());
+            HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to load queries from external table.", e.toString(),
+                    "QueryLogId=" + queryLogId + ", ExternalTableName=" + extTableName, userId);
             return false;
         }
 
@@ -216,7 +227,7 @@ public class CatalogService {
     }
 
 
-    public boolean executeGPSD(int gpsdId, String userName, String fileName) {
+    public String executeGPSD(int gpsdId, String userName, String fileName) {
         String searchPath = this.haystackSchema;
         int lineNo = 0;
         boolean hadErrors = false;
@@ -247,6 +258,9 @@ public class CatalogService {
                 tmpdbConn.close();
             } catch (Exception e) {
                 log.error("DATABASE:" + gpsdDBName + " already exists!\n");
+                HSException hsException = new HSException("CatalogService.executeGPSD()", "Unable to create database to execute GPSD script.", e.toString(),
+                        "GPSDId=" + gpsdId + ", FileName=" + fileName, userName);
+
             }
 
             // Get GPSD Credentials
@@ -392,6 +406,8 @@ public class CatalogService {
                                     } catch (Exception e) {
                                         hadErrors = true;
                                         log.debug(e.getMessage());
+                                        HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in executing GPSD Query Batch", e.toString(),
+                                                "GPSDId=" + gpsdId + ", FileName=" + fileName + " ,SQL=" + sbBatchQueries.toString(), userName);
                                         // do nothing
                                     }
                                     currBatchSize = 0;
@@ -405,6 +421,8 @@ public class CatalogService {
                                 } catch (Exception e) {
                                     hadErrors = true;
                                     log.debug(e.getMessage());
+                                    HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in executing GPSD Query", e.toString(),
+                                            "GPSDId=" + gpsdId + ", FileName=" + fileName + " ,SQL=" + currQuery, userName);
                                     // do nothing
                                 }
                             }
@@ -430,13 +448,16 @@ public class CatalogService {
             sqlToExec = String.format("UPDATE %s.gpsd SET nooflines=%d, gpsd_db='%s' WHERE gpsd_id=%d;", searchPath, lineNo, gpsdDBName, gpsdId);
             dbConnect.execNoResultSet(sqlToExec);
             dbConnect.close();
+            return json_res;
 
         } catch (Exception e) {
             hadErrors = true;
             log.error(e.toString());
+            HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in parsing GPSD File or updating GPSD table", e.toString(),
+                    "GPSDId=" + gpsdId + ", FileName=" + fileName, userName);
         }
 
-        return hadErrors;
+        return "None";
     }
 
     private void createUser(String userId, String password, String org) {

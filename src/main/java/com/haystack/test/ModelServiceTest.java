@@ -56,6 +56,7 @@ public class ModelServiceTest extends TestCase {
         String currentDir = System.getProperty("user.dir");
         System.out.println("Current dir using System:" + currentDir);
 
+        Integer userId = 3;
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -77,7 +78,7 @@ public class ModelServiceTest extends TestCase {
         for (int i = 0; i < clusterService.fileQueries.size(); i++) {
             Query qry = new Query();
             qry.setQueryText(clusterService.fileQueries.get(i));
-            ms.processSQL(qry, 400.5);
+            ms.processSQL(qry, 400.5, userId);
         }
 
         ms.scoreModel();

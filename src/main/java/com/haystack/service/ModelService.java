@@ -3,7 +3,9 @@ package com.haystack.service;
 
 import com.haystack.domain.*;
 
+import com.haystack.parser.JSQLParserException;
 import com.haystack.parser.statement.update.Update;
+import com.haystack.util.HSException;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +26,7 @@ public class ModelService {
 
     static Logger log = LoggerFactory.getLogger(ModelService.class.getName());
     static Tables tablelist;
+    private Integer userId = null;
 
     public ModelService(){
         tablelist = new Tables();
@@ -70,21 +73,27 @@ public class ModelService {
         return tablelist.getJSON();
     }
 
-    public void processSQL(Query query, double executionTime) throws Exception {
-        processSQL(query.getQueryText(), executionTime);
+    public void processSQL(Query query, double executionTime, Integer userId) throws Exception {
+        processSQL(query.getQueryText(), executionTime, userId);
     }
 
-    public boolean processSQL(String query, double executionTime) throws Exception {
+    public boolean processSQL(String query, double executionTime, Integer userId) {
         TablesNamesFinder currtablesNF = new TablesNamesFinder();
         try {
             // TODO: Parse Statement and annotate the input Query object with details
             // 1.   Note: Some queries will be executed with the search_path set, so table name might not have schema and will
             //      have to manually resolve this (if there are collisions then errors have to be logged
+            this.userId = userId;
             log.info("Starting ModelService.processSQL");
             log.debug("Processing SQL:\n" + query);
 
             String sqls = query;
-            Statement statement = CCJSqlParserUtil.parse(sqls);
+            Statement statement = null;
+            try {
+                statement = CCJSqlParserUtil.parse(sqls);
+            } catch (Exception e) {
+                HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
+            }
             Select selectStatement = null;
             Update updateStatement = null;
             String stmtType = "";
@@ -111,6 +120,7 @@ public class ModelService {
                 strTableList = currtablesNF.getSemantics(updateStatement, "1");
             } else {
                 log.error("Statement Not Supported :" + statement.toString());
+                HSException hsException = new HSException("ModelService.processSQL()", "Statement Not Supported", null, "SQL=" + query, userId);
                 return false;
             }
 
@@ -145,11 +155,12 @@ public class ModelService {
             // Log Parsing Error
             log.error("SQL:" + query);
             log.error("PARSING ERROR:" + e.toString());
+            HSException hsException = new HSException("ModelService.processSQL()", "Unable to Process Query", e.toString(), "SQL=" + query, userId);
             return false;
         }
     }
 
-    private void divideTimeAmongstTables(TablesNamesFinder currtablesNF, double executionTime){
+    private void divideTimeAmongstTables(TablesNamesFinder currtablesNF, double executionTime) {
 
         // If Table is columnar then goto A else goto B
         // A) Calculate the number of columns used for each table in the query = NoOfColsUsed
@@ -227,9 +238,13 @@ public class ModelService {
             }
         } catch (Exception e) {
             log.error("Error divideTimeAmongstTable: " + e.toString());
+            HSException hsException = new HSException("ModelService.divideTimeAmongstTables()", "Exception in dividing time among the tables ",
+                    e.toString(), "No Context Info", userId);
+
         }
     }
-    private void processConditions(TablesNamesFinder currtablesNF){
+
+    private void processConditions(TablesNamesFinder currtablesNF) {
         // === Extract Conditions
         // === If where clause then increment UsageScore for the column
         // === If join condition then connect the two tables together and increment join usage for left and right column
@@ -358,6 +373,9 @@ public class ModelService {
 
             } catch (Exception e) {
                 log.error("Error processCondition: " + condition.fullExpression);
+                HSException hsException = new HSException("ModelService.processConditions()", "Exception in processing condition.",
+                        e.toString(), "condition=" + condition.fullExpression, userId);
+
             }
         }
         // Now merge the local Join Cache with the Global Join Cache
@@ -475,6 +493,8 @@ public class ModelService {
             }
         } catch( Exception e){
             log.error("Error Resolving Column:"+ column.nameFQN + " " + e.toString());
+            HSException hsException = new HSException("ModelService.resolveColumnForJoin()", "Exception in resolving column for join.",
+                    e.toString(), "column=" + column.nameFQN, userId);
         }
         return col;
     }
@@ -502,10 +522,12 @@ public class ModelService {
         }
         catch (Exception e){
             log.error("Error processColumn: " + attribute.nameFQN);
+            HSException hsException = new HSException("ModelService.processProjectedColumn()", "Exception in processing column.",
+                    e.toString(), "column=" + attribute.nameFQN, userId);
         }
     }
 
-    private Column resolveColumn(Attribute column, TablesNamesFinder currTablesNF){
+    private Column resolveColumn(Attribute column, TablesNamesFinder currTablesNF) {
         String tableName = column.tableName;
         String columnName = column.name;
         String schemaName = column.schema;
@@ -610,6 +632,8 @@ public class ModelService {
                 }
             } catch( Exception e){
                 log.error("Error Resolving Column:"+ column.nameFQN + " " + e.toString());
+                HSException hsException = new HSException("ModelService.resolveColumn()", "Exception in resolving column.",
+                        e.toString(), "column=" + column.nameFQN, userId);
             }
         return col;
     }
