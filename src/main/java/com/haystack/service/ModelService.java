@@ -92,12 +92,16 @@ public class ModelService {
             try {
                 statement = CCJSqlParserUtil.parse(sqls);
             } catch (Exception e) {
-                HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
+                log.error("ModelService.processSQL() : Error in parsing SQL=" + query.toString());
+                // HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
             }
             Select selectStatement = null;
             Update updateStatement = null;
             String stmtType = "";
 
+            if (statement == null) {
+                return false;
+            }
             try {
                 selectStatement = (Select) statement;
                 stmtType = "SELECT";
@@ -120,7 +124,7 @@ public class ModelService {
                 strTableList = currtablesNF.getSemantics(updateStatement, "1");
             } else {
                 log.error("Statement Not Supported :" + statement.toString());
-                HSException hsException = new HSException("ModelService.processSQL()", "Statement Not Supported", null, "SQL=" + query, userId);
+                //HSException hsException = new HSException("ModelService.processSQL()", "Statement Not Supported", null, "SQL=" + query, userId);
                 return false;
             }
 
@@ -373,8 +377,8 @@ public class ModelService {
 
             } catch (Exception e) {
                 log.error("Error processCondition: " + condition.fullExpression);
-                HSException hsException = new HSException("ModelService.processConditions()", "Exception in processing condition.",
-                        e.toString(), "condition=" + condition.fullExpression, userId);
+                // HSException hsException = new HSException("ModelService.processConditions()", "Exception in processing condition.",
+                //         e.toString(), "condition=" + condition.fullExpression, userId);
 
             }
         }
@@ -472,7 +476,7 @@ public class ModelService {
                     for (int i=0; i<currTablesNF.columns.size(); i++){
                         Attribute currAttr = currTablesNF.columns.get(i);
 
-                        if(currAttr.getDepth() > column.getDepth()) {
+                        if (currAttr.getDepth() >= column.getDepth()) {
                             if (column.name.equals(currAttr.alias)) {
                                 col = tablelist.findColumn(currAttr.schema, currAttr.tableName, currAttr.name);
                                 if(col == null) {

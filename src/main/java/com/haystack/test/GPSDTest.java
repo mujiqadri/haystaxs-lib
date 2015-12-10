@@ -46,7 +46,7 @@ public class GPSDTest extends TestCase {
     }
 
     public void testWorkload() throws Exception {
-        Integer workloadId = 1;
+        Integer workloadId = 18;
 
         ConfigProperties configProperties = new ConfigProperties();
 
