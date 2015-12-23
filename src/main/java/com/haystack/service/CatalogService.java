@@ -50,6 +50,40 @@ public class CatalogService {
         validateSchema();
     }
 
+
+    public String getGPSDJson(int gpsd_id) {
+
+        Integer user_id = null;
+        String json = "";
+        try {
+            String sql = "select A.gpsd_db, C.user_id, C.user_name\n" +
+                    "from " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
+                    "where C.user_id = A.user_id AND A.gpsd_id = " + gpsd_id;
+
+            ResultSet rs = dbConnect.execQuery(sql);
+
+            rs.next();
+
+            String gpsd_db = rs.getString("gpsd_db");
+            user_id = rs.getInt("user_id");
+            Date startDate = rs.getDate("start_date");
+            Date endDate = rs.getDate("end_date");
+            String schemaName = rs.getString("user_name");
+
+            rs.close();
+
+            ClusterService clusterService = new ClusterService(this.configProperties, gpsd_db);
+            Tables tablelist = clusterService.getTablefromGPDBStats(gpsd_id);
+
+            json = tablelist.getJSON();
+
+
+        } catch (Exception e) {
+            log.error("Error in getting Json from GPSD:" + gpsd_id + " Exception:" + e.toString());
+            HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
+        }
+        return json;
+    }
     // ProcessWorkload Method, will take 1 GPSD DB and a date range and run Analysis on these queries
     // to generate a JSON model against the workload
 
@@ -84,7 +118,7 @@ public class CatalogService {
 
             // Fetch the queries based on start and end date
             sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
-                    "' and logsessiontime <='" + endDate + "' and  EXTRACT(EPOCH FROM logduration) > 0";
+                    "' and logsessiontime <='" + endDate + "' and  EXTRACT(EPOCH FROM logduration) > 0;";
             ResultSet rsQry = dbConnect.execQuery(sql);
 
             while (rsQry.next()) {
@@ -96,7 +130,8 @@ public class CatalogService {
 
                 for (int i = 0; i < arrQry.length; i++) {
                     String sQry = arrQry[i];
-                    ms.processSQL(sQry, durationSeconds, user_id);
+                    String nQry = extractSelectFromInsert(sQry);
+                    ms.processSQL(nQry, durationSeconds, user_id);
                 }
             }
             rsQry.close();
@@ -118,6 +153,21 @@ public class CatalogService {
         return null;
     }
 
+    private String extractSelectFromInsert(String input) {
+        String sql = input.toLowerCase().trim();
+        boolean isInsert = sql.startsWith("insert");
+        if (isInsert) {
+            int i = sql.indexOf("into");
+            String sql_sub = sql.substring(i);
+            int j = sql_sub.indexOf("select");
+            if (j > 0) {
+                String result = sql_sub.substring(j);
+                return result;
+            }
+        }
+        return input;
+
+    }
     // ProcessQueryLog Method, reads the unzipped query log file(s) from the Upload Directory
     // Pass the QueryId, against which the QueryLogDates table will be populated
     // Pass the QueryLogDirectory, where the csv log files have been uncompressed
