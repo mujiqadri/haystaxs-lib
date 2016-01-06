@@ -12,8 +12,8 @@ public class GPSDTest extends TestCase {
 
     public void testQueryFile() throws Exception {
 
-        Integer querylogID = 27;
-        String queryLogDirectory = "/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/" + querylogID.toString();  // The zipped file should be unzipped in a temp folder on Master Node
+        Integer querylogID = 28;
+        String queryLogDirectory = "/tpcds_at_gmail_dot_com/querylogs/" + querylogID.toString();  // The zipped file should be unzipped in a temp folder on Master Node
         //String queryLogDirectory = "/querylogs";
 
         ConfigProperties configProperties = new ConfigProperties();
@@ -28,11 +28,24 @@ public class GPSDTest extends TestCase {
         System.out.print("test finished");
     }
 
+    public void testgetGPSDJson() throws Exception {
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        CatalogService catalogService = new CatalogService(configProperties);
+
+        String json = catalogService.getGPSDJson(33);
+
+        System.out.print(json);
+    }
+
     public void testGPSD() throws Exception {
 
-        String userId = "CITI_EMEA";
+        String userName = "tpcds";
         //String filename = "/Work/01-haystack/HayStack-1.2-22APR2015-JAR/HayStack-1.2-22APR2015/src/main/resources/gpsd-output-bmo.sql";
-        String filename = "/Work/uploads/mujtaba_dot_qadri_at_gmail_dot_com/gpsd/gpsd_emea_output_10302105.sql";
+        //String filename = "/Work/uploads/mujtaba_dot_qadri_at_gmail_dot_com/gpsd/gpsd_emea_output_10302105.sql";
+        String filename = "/Work/01-haystack/gpsd/tpc-ds_gpsd-30Oct2015.sql";
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -40,7 +53,7 @@ public class GPSDTest extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        catalogService.executeGPSD(19, userId, filename);
+        catalogService.executeGPSD(33, userName, filename);
 
         System.out.print("test finished");
     }

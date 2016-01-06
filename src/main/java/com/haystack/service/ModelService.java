@@ -118,10 +118,15 @@ public class ModelService {
 
             List<String> strTableList;
 
-            if (stmtType == "SELECT ") {
+            if (stmtType == "SELECT") {
                 strTableList = currtablesNF.getSemantics(selectStatement, "1");
             } else if (stmtType == "UPDATE") {
                 strTableList = currtablesNF.getSemantics(updateStatement, "1");
+                if (strTableList.size() > 0) {
+                    QryTable q = new QryTable();
+                    q.tablename = strTableList.get(0).toString();
+                    currtablesNF.tables.add(q);
+                }
             } else {
                 log.error("Statement Not Supported :" + statement.toString());
                 //HSException hsException = new HSException("ModelService.processSQL()", "Statement Not Supported", null, "SQL=" + query, userId);
