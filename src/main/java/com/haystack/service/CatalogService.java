@@ -14,12 +14,14 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Date;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 
 /**
  * CatalogService will deal with all functions related to Cloud Based Files (GPSD and GPDB-Log Files)
@@ -57,7 +59,7 @@ public class CatalogService {
         String json = "";
         try {
             String sql = "select A.gpsd_db, C.user_id, C.user_name\n" +
-                    "from " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
+                    "from " + haystackSchema + ".gpsd A , " + haystackSchema + ".users C \n" +
                     "where C.user_id = A.user_id AND A.gpsd_id = " + gpsd_id;
 
             ResultSet rs = dbConnect.execQuery(sql);
@@ -66,8 +68,8 @@ public class CatalogService {
 
             String gpsd_db = rs.getString("gpsd_db");
             user_id = rs.getInt("user_id");
-            Date startDate = rs.getDate("start_date");
-            Date endDate = rs.getDate("end_date");
+            //Date startDate = rs.getDate("start_date");
+            //Date endDate = rs.getDate("end_date");
             String schemaName = rs.getString("user_name");
 
             rs.close();
@@ -79,7 +81,7 @@ public class CatalogService {
 
 
         } catch (Exception e) {
-            log.error("Error in getting Json from GPSD:" + gpsd_id + " Exception:" + e.toString());
+            log.error("Error in getting Json (gpsd might not exist) from GPSD:" + gpsd_id + " Exception:" + e.toString());
             HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
         }
         return json;
@@ -177,36 +179,68 @@ public class CatalogService {
         String userName = "";
         Integer userId = null;
         String extTableName = "";
+        String original_file_name = "";
+        DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
         // Fetch userName from Users Table against the queryLogID
-        String sql = String.format("SELECT US.user_name, US.user_id FROM %s.query_logs QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d", haystackSchema, haystackSchema, queryLogId);
+        String sql = String.format("SELECT QL.original_file_name, US.user_name, US.user_id FROM %s.query_logs QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d",
+                haystackSchema, haystackSchema, queryLogId);
 
         try {
-            ResultSet rs = dbConnect.execQuery(sql);
-            rs.next();
-            userName = rs.getString("user_name");
-            userId = rs.getInt("user_id");
-        } catch (SQLException e) {
-            HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to fetch userNAme", e.toString(), "QueryLogId=" + queryLogId, userId);
-            log.error("Unable to fetch user_id, Exception:" + e.toString());
-        }
-        try {
-            extTableName = createExternalTableForQueries(queryLogDirectory, queryLogId, userName);
-        } catch (Exception e) {
-            log.error("Unable to create external table for queries, Exception:" + e.toString());
-            HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to create external table for queries.", e.toString(),
-                    "QueryLogId=" + queryLogId + ", QueryLogDirectory=" + queryLogDirectory, userId);
+            try {
+                ResultSet rs = dbConnect.execQuery(sql);
+                rs.next();
+                userName = rs.getString("user_name");
+                userId = rs.getInt("user_id");
+                original_file_name = rs.getString("original_file_name");
 
-        }
-        try {
-            loadQueries(extTableName, queryLogId, userName);
-            return true;
+                Date date = new Date();
+
+                // Create User Inbox Message
+                saveUserInboxMsg(userId, "QUERYLOG_STATUS", "CREATED", "Query Log Job Created @DateTime=" + dateFormat.format(date) + " For Uploaded File:" + original_file_name, "JOB CREATED", "CatalogService.processQueryLog");
+            } catch (SQLException e) {
+                HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to fetch userNAme", e.toString(), "QueryLogId=" + queryLogId, userId);
+                log.error("Unable to fetch user_id, Exception:" + e.toString());
+                throw e;
+            }
+            try {
+                extTableName = createExternalTableForQueries(queryLogDirectory, queryLogId, userName);
+            } catch (Exception e) {
+                log.error("Unable to create external table for queries, Exception:" + e.toString());
+                HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to create external table for queries.", e.toString(),
+                        "QueryLogId=" + queryLogId + ", QueryLogDirectory=" + queryLogDirectory, userId);
+                throw e;
+            }
+            try {
+                Date date = new Date();
+                saveUserInboxMsg(userId, "QUERYLOG_STATUS", "PROCESSING", "Processing started for Query Log File:" + original_file_name + " @DateTime=" + dateFormat.format(date), "JOB PROCESSING", "CatalogService.processQueryLog");
+
+                loadQueries(extTableName, queryLogId, userName);
+            } catch (Exception e) {
+                log.error("Unable to populate queries, Exception:" + e.toString());
+                HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to load queries from external table.", e.toString(),
+                        "QueryLogId=" + queryLogId + ", ExternalTableName=" + extTableName, userId);
+                throw e;
+            }
         } catch (Exception e) {
-            log.error("Unable to populate queries, Exception:" + e.toString());
-            HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to load queries from external table.", e.toString(),
-                    "QueryLogId=" + queryLogId + ", ExternalTableName=" + extTableName, userId);
+            Date date = new Date();
+            saveUserInboxMsg(userId, "QUERYLOG_STATUS", "ERROR", "Error encountered while processing Query Log File, @DateTime=" + dateFormat.format(date) + " For Uploaded File:" + original_file_name, "JOB ERROR", "CatalogService.processQueryLog");
             return false;
         }
+        Date date = new Date();
+        saveUserInboxMsg(userId, "QUERYLOG_STATUS", "SUCCESS", "Processing of Query Log File:" + original_file_name + " is completed @DateTime=" + dateFormat.format(date), "JOB SUCCESS", "CatalogService.processQueryLog");
 
+        return true;
+    }
+
+    public void saveUserInboxMsg(Integer userId, String msgType, String msgTypeStatus, String msg_Text, String msg_Title, String msg_Class) {
+        try {
+            String sql = String.format("INSERT INTO %s.user_inbox (user_id, msg_type, msg_type_status, msg_date, isRead, msg_text, msg_title, msg_class) VALUES(%d," +
+                    "'%s','%s', now(), false,'%s','%s','%s');", haystackSchema.toString(), userId, msgType, msgTypeStatus, msg_Text, msg_Title, msg_Class);
+
+            dbConnect.execNoResultSet(sql);
+        } catch (Exception e) {
+            log.error("Unable to save UserInbox Message, Exception:" + e.toString());
+        }
     }
 
     private void loadQueries(String extTableName, Integer QueryId, String userId) throws SQLException {
@@ -267,7 +301,7 @@ public class CatalogService {
                 "    logstack text\n" +
                 ")\n" +
                 " LOCATION ( 'gpfdist://" + gpfdist_host + ":" + gpfdist_port + queryLogDirectory + "/*.csv' )\n" +
-                "FORMAT 'CSV' (delimiter ',' null '' escape '\"' quote '\"');";
+                "FORMAT 'CSV' (delimiter ',' null '' escape '\\\\' quote '\"');";
 
         createSchema(userid);
         dbConnect.execNoResultSet("DROP EXTERNAL TABLE IF EXISTS " + userid + "." + extTableName + ";");
@@ -435,9 +469,17 @@ public class CatalogService {
                     if (isChangingDB < 0) {
 
 
+
                         int y = line.indexOf(";");
                         if (y >= 0) {
-                            String[] strSplit = line.split(";");
+
+                            // Check if semi-colon in between double quotes, if yes then ignore this semi-colon
+                            //String line = "foo,bar,c;qual=\"baz,blurb\",d;junk=\"quux,syzygy\"";
+                            String[] strSplit = line.split(";(?=([^\"]*\"[^\"]*\")*[^\"]*$)", -1);
+                            //for(String t : tokens) {
+                            //    System.out.println("> "+t);
+                            //}
+                            //String[] strSplit = line.split(";");
                             if (strSplit.length > 0) {
                                 currQuery = currQuery + " " + strSplit[0] + ";";
                             } else {
