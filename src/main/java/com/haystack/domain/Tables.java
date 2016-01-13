@@ -158,7 +158,7 @@ public class Tables  {
         return result;
     }
 
-    public String loadfromStats(DBConnectService dbConn) {
+    public String loadfromStats(DBConnectService dbConn, boolean return_Json) {
         String jsonResult = "";
         try {
             String sqlTbl = "\t\tSELECT tbl.oid as table_oid, sch.nspname as schema_name, relname as table_name,\n" +
@@ -312,8 +312,9 @@ public class Tables  {
             }
             rsTbl.close();
 
-            //jsonResult = getJSON();
-
+            if (return_Json) {
+                jsonResult = getJSON();
+            }
         } catch (Exception e) {
             log.error("Error in loading tables from Stats" + e.toString());
         }
