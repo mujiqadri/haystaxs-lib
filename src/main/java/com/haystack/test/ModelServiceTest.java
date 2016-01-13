@@ -78,7 +78,7 @@ public class ModelServiceTest extends TestCase {
         for (int i = 0; i < clusterService.fileQueries.size(); i++) {
             Query qry = new Query();
             qry.setQueryText(clusterService.fileQueries.get(i));
-            ms.processSQL(qry, 400.5, userId);
+            ms.processSQL(qry, 400.5, userId, "public");
         }
 
         ms.scoreModel();

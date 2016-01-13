@@ -22,6 +22,7 @@ import java.util.Date;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.StringTokenizer;
 
 /**
  * CatalogService will deal with all functions related to Cloud Based Files (GPSD and GPDB-Log Files)
@@ -93,7 +94,7 @@ public class CatalogService {
         Integer user_id = null;
         try {
             // Get Database Name against GPSDId,-> DBName
-            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, C.user_id, C.user_name\n" +
+            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, B.dbname, C.user_id, C.user_name\n" +
                     "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
                     "where A.gpsd_id = B.gpsd_id and C.user_id = A.user_id AND A.workload_id = " + workloadId;
 
@@ -102,6 +103,7 @@ public class CatalogService {
             rs.next();
 
             String gpsd_db = rs.getString("gpsd_db");
+            String dbname = rs.getString("dbname");
             Integer gpsd_id = rs.getInt("gpsd_id");
             user_id = rs.getInt("user_id");
             Date startDate = rs.getDate("start_date");
@@ -119,21 +121,71 @@ public class CatalogService {
             rs.close();
 
             // Fetch the queries based on start and end date
-            sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
-                    "' and logsessiontime <='" + endDate + "' and  EXTRACT(EPOCH FROM logduration) > 0;";
+            // Update: 11Jan2016= Order by date ASC -- So that we can set search_path while processing queries in the order they were executed
+            // Update: 11Jan2016= Fetch only queries related to the gpsd_db linked to this workload
+
+
+            String whereSQL = schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
+                    "' and logsessiontime <='" + endDate + "'" +
+                    //" and  EXTRACT(EPOCH FROM logduration) > 0 " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
+                    " and logdatabase = '" + dbname + "'";        // Get queries related to the GPSD database to minimze repeat processing of queries
+            //" and lower(sql) like 'set%search_path%'" +  // Added this to test search_path functionality
+            String orderbySQL = " order by logsessiontime;";
+
+            // Count # of Rows so that Workload Processing Percentage can be updated
+
+            sql = "select count(1) as NoOfQueries FROM " + whereSQL;
+            ResultSet rsCnt = dbConnect.execQuery(sql);
+
+            rsCnt.next();
+            int totalQueries = rsCnt.getInt("NoOfQueries");
+            int percentProcessed = 0;
+            int currQryCounter = 0;
+
+            sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
             ResultSet rsQry = dbConnect.execQuery(sql);
 
+            String current_search_path = "public";
+            String nQry = "";
             while (rsQry.next()) {
-                String currQry = rsQry.getString("sql");
-                Timestamp duration = rsQry.getTimestamp("logduration");
-                Integer durationSeconds = rsQry.getInt("duration_seconds");
+                try {
+                    currQryCounter++;
+                    int currProcessingPercent = (currQryCounter * 100 / totalQueries);
+                    if (currProcessingPercent > percentProcessed) {
+                        updatePercentProcessedWorkload(currProcessingPercent, workloadId);
+                        percentProcessed = currProcessingPercent;
+                    }
+                    String currQry = rsQry.getString("sql");
+                    currQry = currQry.toLowerCase(); // convert sql to lower case for ease of processing
 
-                String[] arrQry = currQry.split(";");
 
-                for (int i = 0; i < arrQry.length; i++) {
-                    String sQry = arrQry[i];
-                    String nQry = extractSelectFromInsert(sQry);
-                    ms.processSQL(nQry, durationSeconds, user_id);
+                    Timestamp duration = rsQry.getTimestamp("logduration");
+                    Integer durationSeconds = rsQry.getInt("duration_seconds");
+
+                    String[] arrQry = currQry.split(";");
+
+                    for (int i = 0; i < arrQry.length; i++) {
+                        String sQry = arrQry[i];
+
+                        // Check if the SQL statement is set search_path statement, if yes then store this in the search_path variable
+                        if (sQry.trim().toLowerCase().startsWith("set search_path") == true) {
+                            String[] s1 = sQry.split("=");
+                            current_search_path = s1[1].toString().replaceAll("\\s+", "");
+                        }
+
+                        nQry = extractSelectFromInsert(sQry);  // extract select portion from insert statement
+                        if (nQry.equals(sQry)) {
+                            nQry = extractSelectFromGPText(sQry);       // extract subquery from gptext.index(TABLE(subquery)
+                        }
+                        nQry = removeScatterBy(nQry);
+
+                        Boolean boolResult = ms.processSQL(nQry, durationSeconds, user_id, current_search_path);
+                        if (boolResult == false) {
+                            log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("Error in Processing SQL:" + workloadId + ": search_path=" + current_search_path + " SQL=" + nQry + " Exception:" + e.toString());
                 }
             }
             rsQry.close();
@@ -155,20 +207,147 @@ public class CatalogService {
         return null;
     }
 
+    private void updatePercentProcessedWorkload(int currProcessingPercent, Integer workloadId) {
+        try {
+            String sql = String.format("UPDATE %s.workloads SET percent_processed = %d where workload_id = %d;", haystackSchema.toString(), currProcessingPercent, workloadId);
+            dbConnect.execNoResultSet(sql);
+        } catch (Exception e) {
+            log.error("Error in Updating Workload Percentage WorkloadId:" + workloadId + " Exception:" + e.toString());
+        }
+    }
+
+    private String removeScatterBy(String input) {
+        StringTokenizer st = new StringTokenizer(input, "()", true);
+        String ret = null;
+        String left = "";
+        if (input.contains("scatter by")) {
+            while (st.hasMoreTokens()) {
+
+                String token = st.nextToken();
+                int start = left.length();
+                left += token;
+                if (token.contains("scatter by")) {
+                    boolean exit = false;
+                    while (!exit) {
+                        token = st.nextToken();
+                        left += token;
+                        if (token.equals(")")) {
+                            int end = left.length();
+                            ret = input.substring(0, start);
+                            if (end < input.length()) {
+                                ret += input.substring(end, input.length() - end);
+                            }
+                            return ret;
+                        }
+                    }
+                }
+            }
+        } else {
+            ret = input;
+        }
+        return ret;
+    }
+
+    private String extractSelectFromGPText(String input) {
+
+        String ret = "";
+        String currToken = null;
+        input = input.toLowerCase();
+
+        if (input.contains("gptext.index")) {
+            StringTokenizer st = new StringTokenizer(input, "()", true);
+            String leftString = "";
+            while (st.hasMoreTokens()) {
+                currToken = st.nextToken();
+                leftString += currToken;
+
+                if (currToken.equals("table")) {   // Start Extracting SELECT SQL from this point till
+
+                    currToken = st.nextToken();
+                    leftString += currToken;
+                    int start = leftString.length();
+                    boolean exit = false;
+                    int countOpenBrackets = 0;
+                    while (!exit) {
+                        currToken = st.nextToken();
+                        leftString += currToken;
+                        if (currToken.equals("(")) {
+                            countOpenBrackets++;
+                        } else {
+                            if (currToken.equals(")")) {
+                                if (countOpenBrackets == 0) {
+                                    ret = input.substring(start, leftString.length() - 1);
+                                    return ret;
+                                } else {
+                                    countOpenBrackets--;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            ret = input;
+        }
+        return ret;
+    }
+
     private String extractSelectFromInsert(String input) {
         String sql = input.toLowerCase().trim();
         boolean isInsert = sql.startsWith("insert");
-        if (isInsert) {
-            int i = sql.indexOf("into");
-            String sql_sub = sql.substring(i);
-            int j = sql_sub.indexOf("select");
-            if (j > 0) {
-                String result = sql_sub.substring(j);
-                return result;
-            }
-        }
-        return input;
+        String currToken = "";
+        String ret = "";
 
+        if (isInsert) {
+            StringTokenizer st = new StringTokenizer(input, "()", true);
+            String leftString = "";
+            boolean foundInsert = false, selectStarted = false, bracketFound = false;
+            int start = 0, end = 0;
+            while (st.hasMoreTokens()) {
+                currToken = st.nextToken();
+                leftString += currToken;
+
+                if (currToken.contains("insert")) {
+                    foundInsert = true;
+                }
+                if (currToken.equals("(") && foundInsert) {
+                    bracketFound = true;
+                    start = leftString.length() + 1;
+                }
+                if (currToken.equals(")") && bracketFound) {
+                    bracketFound = false;
+                }
+                if (currToken.contains("select") && foundInsert) {
+                    if (!bracketFound) {
+                        start = leftString.length() - currToken.length();
+                        ret = input.substring(start, input.length() - start);
+                    } else {
+                        selectStarted = true;
+                        start = leftString.length() - currToken.length();
+                        boolean exit = false;
+                        int countOpenBrackets = 0;
+                        while (!exit) {
+                            currToken = st.nextToken();
+                            leftString += currToken;
+                            if (currToken.equals("(")) {
+                                countOpenBrackets++;
+                            } else {
+                                if (currToken.equals(")")) {
+                                    if (countOpenBrackets == 0) {
+                                        ret = input.substring(start, leftString.length() - 1);
+                                        return ret;
+                                    } else {
+                                        countOpenBrackets--;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else
+            ret = input;
+        return ret;
     }
     // ProcessQueryLog Method, reads the unzipped query log file(s) from the Upload Directory
     // Pass the QueryId, against which the QueryLogDates table will be populated

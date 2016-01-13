@@ -66,12 +66,13 @@ public class Tables  {
         }
         return sw.toString();
     }
-    public Column findColumn(String schemaName, String tableName, String columnName ){
+
+    public Column findColumn(String schemaName, String tableName, String columnName, String current_search_path) {
         Table tbl = null;
         Column col = null;
         try {
             if (schemaName == null) {
-                schemaName = findSchema(tableName);
+                schemaName = findSchema(tableName, current_search_path);
             }
             if (schemaName == null) { // Derived table return null
                 return col;
@@ -98,18 +99,36 @@ public class Tables  {
         Table tbl = tableHashMap.get(key);
         return tbl;
     }
-    public String findSchema(String tablename){
+
+    public String findSchema(String tablename, String current_search_path) {
         // === TODO take the tablename and search for the schema
         Set<Map.Entry<String, Table>> set = tableHashMap.entrySet();
+
+        Integer schemaRank = -1;
+        String return_Schema = null;
+        String arrSP[] = current_search_path.split(",");
 
         for(Map.Entry<String, Table> entry : set ){
             String key = entry.getKey();
             Table currTbl = entry.getValue();
             if (currTbl.tableName.equals(tablename)){
-                return currTbl.schema.toString();
+                Integer newSchemaRank = getSchemaRank(currTbl.schema.toString(), arrSP);
+                if ((schemaRank == -1) || (newSchemaRank < schemaRank)) {
+                    schemaRank = newSchemaRank;
+                    return_Schema = currTbl.schema.toString();
+                }
             }
         }
-        return null;
+        return (return_Schema);
+    }
+
+    private Integer getSchemaRank(String schemaName, String[] arrSP) {
+        for (int i = 0; i < arrSP.length; i++) {
+            if (arrSP[i].equals(schemaName)) {
+                return (i + 1);
+            }
+        }
+        return -1;
     }
     public Table findTableByAlias(String alias){
 
