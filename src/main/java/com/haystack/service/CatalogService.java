@@ -34,6 +34,7 @@ public class CatalogService {
     private static Logger log = LoggerFactory.getLogger(CatalogService.class.getName());
     private DBConnectService dbConnect;
     private String queryTblName = "queries";
+    private DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
 
     public CatalogService(ConfigProperties configProperties) {
         this.configProperties = configProperties;
@@ -136,6 +137,12 @@ public class CatalogService {
 
             rs.close();
 
+            // Create a UserInbox Message to Start Processing
+            Date date = new Date();
+            saveUserInboxMsg(user_id, "WORKLOAD_STATUS", "CREATED", "Workload Job Created @DateTime=" + dateFormat.format(date) + " For Workload: Id:" + workloadId + " dbname:" + dbname + " Start:" + startDate + " End:" + endDate
+                    , "WORKLOAD JOB CREATED", "CatalogService.processWorkload");
+
+
             // Fetch the queries based on start and end date
             // Update: 11Jan2016= Order by date ASC -- So that we can set search_path while processing queries in the order they were executed
             // Update: 11Jan2016= Fetch only queries related to the gpsd_db linked to this workload
@@ -160,6 +167,11 @@ public class CatalogService {
 
             sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
             ResultSet rsQry = dbConnect.execQuery(sql);
+
+            // Create a UserInbox Message for Updated Processing
+            Date date2 = new Date();
+            saveUserInboxMsg(user_id, "WORKLOAD_STATUS", "PROCESSING", "Workload Processing Started @DateTime=" + dateFormat.format(date2) + " For Workload: Id:" + workloadId + " dbname:" + dbname + " Start:" + startDate + " End:" + endDate
+                    , "WORKLOAD PROCESSING STARTED", "CatalogService.processWorkload");
 
             String current_search_path = "public";
             String nQry = "";
@@ -209,6 +221,10 @@ public class CatalogService {
             ms.scoreModel();
             String model_json = ms.getModelJSON();
 
+            // Create a UserInbox Message for Completed Processing
+            Date date3 = new Date();
+            saveUserInboxMsg(user_id, "WORKLOAD_STATUS", "COMPLETED", "Workload Processing Completed @DateTime=" + dateFormat.format(date3) + " For Workload: Id:" + workloadId + " dbname:" + dbname + " Start:" + startDate + " End:" + endDate
+                    , "WORKLOAD PROCESSING COMPLETED", "CatalogService.processWorkload");
 
             //sql = "update " + haystackSchema + ".workloads set model_json ='" + model_json + "' where workload_id =" + workloadId + ";";
             //dbConnect.execNoResultSet(sql);
@@ -216,6 +232,10 @@ public class CatalogService {
             return model_json;
 
         } catch (Exception e) {
+            // Create a UserInbox Message for Error in Processing
+            Date date = new Date();
+            saveUserInboxMsg(user_id, "WORKLOAD_STATUS", "ERROR", "Workload Processing Error @DateTime=" + dateFormat.format(date) + " For Workload: Id:" + workloadId + " Exception :" + e.toString()
+                    , "WORKLOAD PROCESSING ERROR", "CatalogService.processWorkload");
             log.error("Error in Processing WorkloadId:" + workloadId + " Exception:" + e.toString());
             HSException hsException = new HSException("CatalogService.processWorkload()", "Error in processing workload", e.toString(), "WorkloadId=" + workloadId, user_id);
         }
@@ -375,7 +395,7 @@ public class CatalogService {
         Integer userId = null;
         String extTableName = "";
         String original_file_name = "";
-        DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+
         // Fetch userName from Users Table against the queryLogID
         String sql = String.format("SELECT QL.original_file_name, US.user_name, US.user_id FROM %s.query_logs QL inner join %s.users US ON QL.user_id = US.user_id where QL.query_log_id = %d",
                 haystackSchema, haystackSchema, queryLogId);
