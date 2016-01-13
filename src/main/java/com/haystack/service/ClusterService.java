@@ -128,7 +128,7 @@ import java.util.Date;
     public Tables getTablefromGPDBStats(Integer gpsd_id) {
         Tables tablelist = new Tables();
         try {
-            String jsonTables = tablelist.loadfromStats(dbConnect);
+            String jsonTables = tablelist.loadfromStats(dbConnect, false);
 
             //String sql = "update " + haystackSchema + ".gpsd set json ='" + jsonTables + "' where gpsd_id = " + gpsd_id + ";";
             //dbConnect.execQuery(sql);
