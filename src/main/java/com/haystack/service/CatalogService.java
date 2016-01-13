@@ -2,8 +2,7 @@ package com.haystack.service;
 
 import com.haystack.domain.Query;
 import com.haystack.domain.Tables;
-import com.haystack.parser.expression.TimestampValue;
-import com.haystack.parser.statement.select.IntersectOp;
+import com.haystack.domain.Table;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
@@ -17,12 +16,9 @@ import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Date;
+import java.util.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.StringTokenizer;
 
 /**
  * CatalogService will deal with all functions related to Cloud Based Files (GPSD and GPDB-Log Files)
@@ -78,6 +74,7 @@ public class CatalogService {
             ClusterService clusterService = new ClusterService(this.configProperties, gpsd_db);
             Tables tablelist = clusterService.getTablefromGPDBStats(gpsd_id);
 
+            saveGpsdStats(gpsd_id, tablelist);
             json = tablelist.getJSON();
 
 
@@ -86,6 +83,25 @@ public class CatalogService {
             HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
         }
         return json;
+    }
+
+    private void saveGpsdStats(int gpsdId, Tables tables) {
+        for (Table table : tables.tableHashMap.values()) {
+            HashMap<String, Object> mapValues = new HashMap<>();
+
+            mapValues.put("gpsd_id", gpsdId);
+            mapValues.put("schema_name", table.schema);
+            mapValues.put("table_name", table.tableName);
+            mapValues.put("size_in_mb", table.stats.sizeOnDisk * 1024);
+            mapValues.put("no_of_rows", table.stats.noOfRows);
+
+            try {
+                dbConnect.insert(haystackSchema + ".gpsd_stats", mapValues);
+            } catch (Exception ex) {
+                log.error("Error inserting gpsd stats in gpsd_stats table for gpsd_id = " + gpsdId + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
+                //HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
+            }
+        }
     }
     // ProcessWorkload Method, will take 1 GPSD DB and a date range and run Analysis on these queries
     // to generate a JSON model against the workload
