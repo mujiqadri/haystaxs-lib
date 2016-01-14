@@ -1,0 +1,771 @@
+{
+  "selectBody": {
+    "distinct": {
+      "onSelectItems": [
+        {
+          "expression": {
+            "table": {
+              "database": {},
+              "name": "tmpobjid"
+            },
+            "columnName": "docinstanceid"
+          }
+        }
+      ]
+    },
+    "selectItems": [
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "tmpobjid"
+          },
+          "columnName": "objectid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "tmpobjid"
+          },
+          "columnName": "docinstanceid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "t"
+          },
+          "columnName": "businessfolderid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "t"
+          },
+          "columnName": "pbafolderid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "t"
+          },
+          "columnName": "conceptid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "fmflags"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "metadatamd5"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "date"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvowners"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvfldrown"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvsrcaddrs"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvrecpts"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvbccrecpt"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvmsgorig"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvlocation"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvacl"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvmd"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvlad"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "fd"
+          },
+          "columnName": "xvunknownrecpts"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xventryid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvfrom"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvto"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvcc"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvbcc"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvdate"
+        }
+      },
+      {
+        "expression": {
+          "name": "string_to_array",
+          "parameters": {
+            "expressions": [
+              {
+                "table": {
+                  "database": {},
+                  "name": "acc"
+                },
+                "columnName": "xvsubject"
+              },
+              {
+                "value": "|"
+              }
+            ]
+          },
+          "allColumns": false,
+          "distinct": false,
+          "isEscaped": false
+        },
+        "alias": {
+          "name": "xvsubject",
+          "useAs": false
+        }
+      },
+      {
+        "expression": {
+          "name": "string_to_array",
+          "parameters": {
+            "expressions": [
+              {
+                "table": {
+                  "database": {},
+                  "name": "acc"
+                },
+                "columnName": "xvbody"
+              },
+              {
+                "value": "|"
+              }
+            ]
+          },
+          "allColumns": false,
+          "distinct": false,
+          "isEscaped": false
+        },
+        "alias": {
+          "name": "xvbody",
+          "useAs": false
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvxpriority"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvattachments"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvattach"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvattachext"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvsize"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvsensitivity"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvmsgclass"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvhasownersfile"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvlanguage"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvisencrypted"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvnonindexedbody"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvnonindexedattach"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvnonindexedattachnames"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvtrackingid"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvtrackingid2"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "xvplatformtype"
+        }
+      },
+      {
+        "expression": {
+          "table": {
+            "database": {},
+            "name": "acc"
+          },
+          "columnName": "embeddedid"
+        }
+      },
+      {
+        "expression": {
+          "name": "string_to_array",
+          "parameters": {
+            "expressions": [
+              {
+                "table": {
+                  "database": {},
+                  "name": "attachment_unchunk"
+                },
+                "columnName": "xvattachment"
+              },
+              {
+                "value": "|"
+              }
+            ]
+          },
+          "allColumns": false,
+          "distinct": false,
+          "isEscaped": false
+        },
+        "alias": {
+          "name": "xvattachment",
+          "useAs": false
+        }
+      },
+      {
+        "expression": {
+          "name": "string_to_array",
+          "parameters": {
+            "expressions": [
+              {
+                "table": {
+                  "database": {},
+                  "name": "acc"
+                },
+                "columnName": "xvother"
+              },
+              {
+                "value": "|"
+              }
+            ]
+          },
+          "allColumns": false,
+          "distinct": false,
+          "isEscaped": false
+        },
+        "alias": {
+          "name": "xvother",
+          "useAs": false
+        }
+      }
+    ],
+    "fromItem": {
+      "database": {
+        "server": {}
+      },
+      "name": "\"es1_3089500533_427979104_idlookup\"",
+      "alias": {
+        "name": "tmpobjid",
+        "useAs": false
+      }
+    },
+    "joins": [
+      {
+        "outer": false,
+        "right": false,
+        "left": false,
+        "natural": false,
+        "full": false,
+        "inner": true,
+        "simple": false,
+        "cross": false,
+        "rightItem": {
+          "database": {
+            "server": {}
+          },
+          "name": "\"es1_3089500533_427979104_folderdocument\"",
+          "alias": {
+            "name": "fd",
+            "useAs": false
+          }
+        },
+        "onExpression": {
+          "expression": {
+            "leftExpression": {
+              "oldOracleJoinSyntax": 0,
+              "oraclePriorPosition": 0,
+              "leftExpression": {
+                "table": {
+                  "database": {},
+                  "name": "fd"
+                },
+                "columnName": "objectid"
+              },
+              "rightExpression": {
+                "table": {
+                  "database": {},
+                  "name": "tmpobjid"
+                },
+                "columnName": "objectid"
+              },
+              "not": false
+            },
+            "rightExpression": {
+              "oldOracleJoinSyntax": 0,
+              "oraclePriorPosition": 0,
+              "leftExpression": {
+                "table": {
+                  "database": {},
+                  "name": "fd"
+                },
+                "columnName": "targetid"
+              },
+              "rightExpression": {
+                "table": {
+                  "database": {},
+                  "name": "tmpobjid"
+                },
+                "columnName": "targetid"
+              },
+              "not": false
+            },
+            "not": false
+          },
+          "not": false
+        }
+      },
+      {
+        "outer": false,
+        "right": false,
+        "left": false,
+        "natural": false,
+        "full": false,
+        "inner": true,
+        "simple": false,
+        "cross": false,
+        "rightItem": {
+          "database": {
+            "server": {}
+          },
+          "name": "\"es1_3089500533_427979104_access\"",
+          "alias": {
+            "name": "acc",
+            "useAs": false
+          }
+        },
+        "onExpression": {
+          "expression": {
+            "oldOracleJoinSyntax": 0,
+            "oraclePriorPosition": 0,
+            "leftExpression": {
+              "table": {
+                "database": {},
+                "name": "tmpobjid"
+              },
+              "columnName": "objectid"
+            },
+            "rightExpression": {
+              "table": {
+                "database": {},
+                "name": "acc"
+              },
+              "columnName": "objectid"
+            },
+            "not": false
+          },
+          "not": false
+        }
+      },
+      {
+        "outer": false,
+        "right": false,
+        "left": false,
+        "natural": false,
+        "full": false,
+        "inner": true,
+        "simple": false,
+        "cross": false,
+        "rightItem": {
+          "database": {
+            "server": {}
+          },
+          "name": "\"es1_3089500533_427979104_target\"",
+          "alias": {
+            "name": "t",
+            "useAs": false
+          }
+        },
+        "onExpression": {
+          "expression": {
+            "oldOracleJoinSyntax": 0,
+            "oraclePriorPosition": 0,
+            "leftExpression": {
+              "table": {
+                "database": {},
+                "name": "t"
+              },
+              "columnName": "targetid"
+            },
+            "rightExpression": {
+              "table": {
+                "database": {},
+                "name": "tmpobjid"
+              },
+              "columnName": "targetid"
+            },
+            "not": false
+          },
+          "not": false
+        }
+      },
+      {
+        "outer": true,
+        "right": false,
+        "left": true,
+        "natural": false,
+        "full": false,
+        "inner": false,
+        "simple": false,
+        "cross": false,
+        "rightItem": {
+          "selectBody": {
+            "selectItems": [
+              {
+                "expression": {
+                  "table": {
+                    "database": {}
+                  },
+                  "columnName": "objectid"
+                }
+              },
+              {
+                "expression": {
+                  "name": "string_agg",
+                  "parameters": {
+                    "expressions": [
+                      {
+                        "table": {
+                          "database": {}
+                        },
+                        "columnName": "xvattachment"
+                      },
+                      {
+                        "value": " | "
+                      }
+                    ]
+                  },
+                  "allColumns": false,
+                  "distinct": false,
+                  "isEscaped": false
+                },
+                "alias": {
+                  "name": "xvattachment",
+                  "useAs": false
+                }
+              }
+            ],
+            "fromItem": {
+              "database": {
+                "server": {}
+              },
+              "name": "\"es1_3089500533_427979104_attachment\""
+            },
+            "groupByColumnReferences": [
+              {
+                "table": {
+                  "database": {}
+                },
+                "columnName": "objectid"
+              }
+            ],
+            "oracleSiblings": false,
+            "forUpdate": false
+          },
+          "alias": {
+            "name": "attachment_unchunk",
+            "useAs": false
+          },
+          "useBrackets": true
+        },
+        "onExpression": {
+          "expression": {
+            "oldOracleJoinSyntax": 0,
+            "oraclePriorPosition": 0,
+            "leftExpression": {
+              "table": {
+                "database": {},
+                "name": "tmpobjid"
+              },
+              "columnName": "objectid"
+            },
+            "rightExpression": {
+              "table": {
+                "database": {},
+                "name": "attachment_unchunk"
+              },
+              "columnName": "objectid"
+            },
+            "not": false
+          },
+          "not": false
+        }
+      }
+    ],
+    "orderByElements": [
+      {
+        "expression": {
+          "expression": {
+            "table": {
+              "database": {},
+              "name": "tmpobjid"
+            },
+            "columnName": "docinstanceid"
+          },
+          "not": false
+        },
+        "asc": true,
+        "ascDesc": false
+      }
+    ],
+    "oracleSiblings": false,
+    "forUpdate": false
+  }
+}

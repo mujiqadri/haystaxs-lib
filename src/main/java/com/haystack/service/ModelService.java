@@ -1,10 +1,12 @@
 package com.haystack.service;
 
 
+import com.google.gson.*;
 import com.haystack.domain.*;
 
 import com.haystack.parser.JSQLParserException;
 import com.haystack.parser.statement.update.Update;
+import com.haystack.parser.util.ASTGenerator;
 import com.haystack.util.HSException;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.slf4j.Logger;
@@ -15,6 +17,9 @@ import com.haystack.parser.statement.Statement;
 import com.haystack.parser.statement.select.Select;
 import com.haystack.parser.util.TablesNamesFinder;
 
+import java.lang.reflect.Type;
+import java.math.BigDecimal;
+import java.sql.ResultSet;
 import java.util.*;
 
 /**
@@ -73,12 +78,13 @@ public class ModelService {
         return tablelist.getJSON();
     }
 
-    public void processSQL(Query query, double executionTime, Integer userId, String current_search_path) throws Exception {
-        processSQL(query.getQueryText(), executionTime, userId, current_search_path);
+    public String processSQL(Integer queryId, Query query, double executionTime, Integer userId, String current_search_path) throws Exception {
+        return processSQL(queryId, query.getQueryText(), executionTime, userId, current_search_path);
     }
 
-    public boolean processSQL(String query, double executionTime, Integer userId, String current_search_path) {
+    public String processSQL(Integer queryId, String query, double executionTime, Integer userId, String current_search_path) {
         TablesNamesFinder currtablesNF = new TablesNamesFinder();
+        String jsonAST = "";
         try {
             // TODO: Parse Statement and annotate the input Query object with details
             // 1.   Note: Some queries will be executed with the search_path set, so table name might not have schema and will
@@ -94,6 +100,7 @@ public class ModelService {
                 statement = CCJSqlParserUtil.parse(sqls);
             } catch (Exception e) {
                 log.error("ModelService.processSQL() : Error in parsing SQL=" + query.toString());
+                throw e;
                 // HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
             }
             Select selectStatement = null;
@@ -101,11 +108,12 @@ public class ModelService {
             String stmtType = "";
 
             if (statement == null) {
-                return false;
+                throw new Exception("Parsing Error");
             }
             try {
                 selectStatement = (Select) statement;
                 stmtType = "SELECT";
+
             } catch (Exception e) {
                 log.debug("Not a Select Statement :" + e.toString());
             }
@@ -131,7 +139,7 @@ public class ModelService {
             } else {
                 log.error("Statement Not Supported :" + statement.toString());
                 //HSException hsException = new HSException("ModelService.processSQL()", "Statement Not Supported", null, "SQL=" + query, userId);
-                return false;
+                throw new Exception("Statement Not Supported :" + statement.toString());
             }
 
             // === Resolve table schema name if missing
@@ -157,16 +165,31 @@ public class ModelService {
             divideTimeAmongstTables(currtablesNF, executionTime);
 
             log.debug("=============== CONDITIONS EXTRACTED =================");
+            // AST Generation Processing
+            try {
+                Select selectObjForJson = new Select();
+                selectObjForJson = selectStatement;
+
+                // Create AST for the query and return it
+                ASTGenerator astGen = new ASTGenerator();
+
+                astGen.removeWhereExpressions(selectObjForJson, "1");
+                jsonAST = getStatementJSON(selectObjForJson);
+
+
+            } catch (Exception e) {
+                log.debug("Error in generating AST for Select Statement :" + query + " Exception:" + e.toString());
+            }
 
             log.info("ModelService.processSQL Complete");
-            return true;
+            return jsonAST;
         }
         catch(Exception e){
             // Log Parsing Error
             log.error("SQL:" + query);
             log.error("PARSING ERROR:" + e.toString());
             HSException hsException = new HSException("ModelService.processSQL()", "Unable to Process Query", e.toString(), "SQL=" + query, userId);
-            return false;
+            return jsonAST;
         }
     }
 
@@ -682,5 +705,30 @@ public class ModelService {
             }
         }
         return retColumn;
+    }
+
+    private String getStatementJSON(Select selectStatement) {
+        String json = "";
+        try {
+            GsonBuilder gsonBuilder = new GsonBuilder();
+
+            gsonBuilder.registerTypeAdapter(Double.class, new JsonSerializer<Double>() {
+                @Override
+                public JsonElement serialize(final Double src, final Type typeOfSrc, final JsonSerializationContext context) {
+                    BigDecimal value = BigDecimal.valueOf(src);
+
+                    return new JsonPrimitive(value);
+                }
+            });
+
+            //Gson objGson = gsonBuilder.setPrettyPrinting().create();
+            Gson objGson = gsonBuilder.create();
+            json = objGson.toJson(selectStatement);
+
+        } catch (Exception e) {
+            log.error("Error generating json " + e.toString());
+        }
+
+        return json;
     }
 }

@@ -151,6 +151,7 @@ public class CatalogService {
             String whereSQL = schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
                     "' and logsessiontime <='" + endDate + "'" +
                     //" and  EXTRACT(EPOCH FROM logduration) > 0 " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
+                    " and sql like '%where%' " + // To Test SQL with where clause
                     " and logdatabase = '" + dbname + "'";        // Get queries related to the GPSD database to minimze repeat processing of queries
             //" and lower(sql) like 'set%search_path%'" +  // Added this to test search_path functionality
             String orderbySQL = " order by logsessiontime;";
@@ -165,7 +166,7 @@ public class CatalogService {
             int percentProcessed = 0;
             int currQryCounter = 0;
 
-            sql = "select sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
+            sql = "select id as queryId, sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
             ResultSet rsQry = dbConnect.execQuery(sql);
 
             // Create a UserInbox Message for Updated Processing
@@ -184,6 +185,7 @@ public class CatalogService {
                         percentProcessed = currProcessingPercent;
                     }
                     String currQry = rsQry.getString("sql");
+                    Integer queryId = rsQry.getInt("queryId");
                     currQry = currQry.toLowerCase(); // convert sql to lower case for ease of processing
 
 
@@ -207,8 +209,12 @@ public class CatalogService {
                         }
                         nQry = removeScatterBy(nQry);
 
-                        Boolean boolResult = ms.processSQL(nQry, durationSeconds, user_id, current_search_path);
-                        if (boolResult == false) {
+                        try {
+                            String jsonAST = ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
+                            if (jsonAST.length() > 0) {
+                                persistAST(schemaName, queryId, jsonAST);
+                            }
+                        } catch (Exception e) {
                             log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
                         }
                     }
@@ -240,6 +246,50 @@ public class CatalogService {
             HSException hsException = new HSException("CatalogService.processWorkload()", "Error in processing workload", e.toString(), "WorkloadId=" + workloadId, user_id);
         }
 
+        return null;
+    }
+
+    private void persistAST(String userSchemaName, Integer queryId, String jsonAST) {
+        try {
+            String jsonMD5 = getMD5(jsonAST);
+
+            // Check if another AST exists with the same MD5
+            String sql = "select min(ast_id) as ast_id, count(ast_id) as count from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "';";
+            ResultSet rsAST = dbConnect.execQuery(sql);
+            rsAST.next();
+
+            Integer cntMatchedAST = rsAST.getInt("count");
+            Integer astID = rsAST.getInt("ast_id");
+
+            if (cntMatchedAST == 0) { // No Matching AST found insert new row in schema.ast table and get the new id to save in schema.ast_queries table
+                sql = "insert into " + userSchemaName + ".ast(ast_json, checksum) values('" + jsonAST + "','" + jsonMD5 + "');";
+                dbConnect.execNoResultSet(sql);
+                // Get new generated AST_ID
+                sql = "select max(ast_id) as ast_id from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "'";
+                ResultSet rsASTId = dbConnect.execQuery(sql);
+                rsASTId.next();
+                astID = rsASTId.getInt("ast_id");
+            }
+            sql = "insert into " + userSchemaName + ".ast_queries(queries_id, ast_json,checksum,ast_id) values(" + queryId + ",'" + jsonAST + "','" + jsonMD5 + "'," + astID + ");";
+            dbConnect.execNoResultSet(sql);
+            // Update the AST in the queryies_ast table and the Unique AST Table
+        } catch (Exception e) {
+            log.error("Error in persisting AST for queryID:" + queryId);
+        }
+    }
+
+    public String getMD5(String md5) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] array = md.digest(md5.getBytes());
+            StringBuffer sb = new StringBuffer();
+            for (int i = 0; i < array.length; ++i) {
+                sb.append(Integer.toHexString((array[i] & 0xFF) | 0x100).substring(1, 3));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            log.error("Error in generating MD5:" + e.toString());
+        }
         return null;
     }
 

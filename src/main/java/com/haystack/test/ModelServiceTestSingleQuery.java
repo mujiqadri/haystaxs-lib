@@ -106,7 +106,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
         ms.setTableList(tablelist);
         //ms.annotateModel(qry,clusterService.tablelist);
 
-        ms.processSQL(qry, 400.5, 3, "public");
+        ms.processSQL(1, qry, 400.5, 3, "public");
 
         ms.scoreModel();
         String str = ms.getModelJSON();

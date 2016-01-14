@@ -28,7 +28,11 @@ public class StringValue implements Expression {
 
 	private String value = "";
 
-	public StringValue(String escapedValue) {
+    public StringValue() {
+
+    }
+
+    public StringValue(String escapedValue) {
 		// romoving "'" at the start and at the end
 		value = escapedValue.substring(1, escapedValue.length() - 1);
 	}

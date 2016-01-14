@@ -1,0 +1,53 @@
+{
+  "selectBody": {
+    "selectItems": [
+      {
+        "expression": {
+          "name": "count",
+          "allColumns": true,
+          "distinct": false,
+          "isEscaped": false
+        }
+      }
+    ],
+    "fromItem": {
+      "database": {
+        "server": {}
+      },
+      "name": "pg_tables"
+    },
+    "where": {
+      "leftExpression": {
+        "oldOracleJoinSyntax": 0,
+        "oraclePriorPosition": 0,
+        "leftExpression": {
+          "table": {
+            "database": {}
+          },
+          "columnName": "tablename"
+        },
+        "rightExpression": {
+          "value": "es1_3089500533_2374999057_access_error"
+        },
+        "not": false
+      },
+      "rightExpression": {
+        "oldOracleJoinSyntax": 0,
+        "oraclePriorPosition": 0,
+        "leftExpression": {
+          "table": {
+            "database": {}
+          },
+          "columnName": "schemaname"
+        },
+        "rightExpression": {
+          "value": "public"
+        },
+        "not": false
+      },
+      "not": false
+    },
+    "oracleSiblings": false,
+    "forUpdate": false
+  }
+}
