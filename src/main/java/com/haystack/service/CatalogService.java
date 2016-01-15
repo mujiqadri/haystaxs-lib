@@ -151,7 +151,7 @@ public class CatalogService {
             String whereSQL = schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
                     "' and logsessiontime <='" + endDate + "'" +
                     //" and  EXTRACT(EPOCH FROM logduration) > 0 " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
-                    " and sql like '%where%' " + // To Test SQL with where clause
+                    //" and sql like '%where%' " + // To Test SQL with where clause
                     " and logdatabase = '" + dbname + "'";        // Get queries related to the GPSD database to minimze repeat processing of queries
             //" and lower(sql) like 'set%search_path%'" +  // Added this to test search_path functionality
             String orderbySQL = " order by logsessiontime;";

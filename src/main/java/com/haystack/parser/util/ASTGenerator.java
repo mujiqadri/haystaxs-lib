@@ -10,6 +10,7 @@ import com.haystack.parser.expression.conditional.OrExpression;
 import com.haystack.parser.expression.relational.*;
 import com.haystack.parser.schema.Column;
 import com.haystack.parser.schema.Table;
+import com.haystack.parser.statement.Statement;
 import com.haystack.parser.statement.delete.Delete;
 import com.haystack.parser.statement.insert.Insert;
 import com.haystack.parser.statement.replace.Replace;
