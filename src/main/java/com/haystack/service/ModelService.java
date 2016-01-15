@@ -99,6 +99,8 @@ public class ModelService {
             try {
                 statement = CCJSqlParserUtil.parse(sqls);
             } catch (Exception e) {
+                // Statement is not a select/update or supported by Parser, store as is;
+                jsonAST = sqls;
                 log.error("ModelService.processSQL() : Error in parsing SQL=" + query.toString());
                 throw e;
                 // HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
@@ -113,6 +115,21 @@ public class ModelService {
             try {
                 selectStatement = (Select) statement;
                 stmtType = "SELECT";
+                // AST Generation Processing
+                try {
+                    Select selectObjForJson = new Select();
+                    selectObjForJson = selectStatement;
+
+                    // Create AST for the query and return it
+                    ASTGenerator astGen = new ASTGenerator();
+
+                    astGen.removeWhereExpressions(selectObjForJson, "1");
+                    jsonAST = getStatementJSON(selectObjForJson);
+
+
+                } catch (Exception e) {
+                    log.debug("Error in generating AST for Select Statement :" + query + " Exception:" + e.toString());
+                }
 
             } catch (Exception e) {
                 log.debug("Not a Select Statement :" + e.toString());
@@ -165,21 +182,7 @@ public class ModelService {
             divideTimeAmongstTables(currtablesNF, executionTime);
 
             log.debug("=============== CONDITIONS EXTRACTED =================");
-            // AST Generation Processing
-            try {
-                Select selectObjForJson = new Select();
-                selectObjForJson = selectStatement;
 
-                // Create AST for the query and return it
-                ASTGenerator astGen = new ASTGenerator();
-
-                astGen.removeWhereExpressions(selectObjForJson, "1");
-                jsonAST = getStatementJSON(selectObjForJson);
-
-
-            } catch (Exception e) {
-                log.debug("Error in generating AST for Select Statement :" + query + " Exception:" + e.toString());
-            }
 
             log.info("ModelService.processSQL Complete");
             return jsonAST;
