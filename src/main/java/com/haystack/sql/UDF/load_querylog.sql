@@ -6,34 +6,32 @@ CREATE OR REPLACE FUNCTION haystack_ui.load_querylog(haystackschema TEXT, usersc
                                                      ext_tblname    TEXT, queryid INTEGER)
   RETURNS VOID AS
   $BODY$
-  DECLARE
-    mycommand  TEXT;
-    sql        TEXT;
-    tbl_exists BOOLEAN;
-    result     BOOLEAN;
-    recCount   INT;
-    rec        RECORD;
-  BEGIN -- outer function wrapper
-    SET AUTOCOMMIT = ON;
+DECLARE
+	    mycommand TEXT;
+	    sql TEXT;
+	    tbl_exists BOOLEAN;
+	    result BOOLEAN;
+	    recCount int;
+	    rec     RECORD;
+BEGIN -- outer function wrapper
+	SET AUTOCOMMIT = ON;
 
 
-    sql := 'set search_path = ' || haystackSchema || ',' || userSchema || ', public;';
-    RAISE NOTICE 'Setting Searchpath, SQL:%', sql;
-    EXECUTE sql;
+	sql := 'set search_path = ' || haystackSchema || ',' || userSchema || ', public;';
+	RAISE NOTICE 'Setting Searchpath, SQL:%', sql;
+	EXECUTE sql;
 
-    SELECT create_ast_tables(userschema, FALSE);
--- Create QueryLog Table if it doesn't exist
+	PERFORM create_ast_tables(userschema , false);
+	-- Create QueryLog Table if it doesn't exist
 
-    SELECT count(*) > 0
-    INTO tbl_exists
-    FROM information_schema.tables
-    WHERE upper(table_schema) = upper(userSchema) AND upper(table_name) = upper(qryLogTblName);
+	select count(*) > 0 INTO tbl_exists
+	from information_schema.tables
+	where upper(table_schema) = upper(userSchema) and upper(table_name) = upper(qryLogTblName);
 
-    RAISE NOTICE 'TABLE EXISTS:%', tbl_exists;
-    IF tbl_exists = 'f'
-    THEN
-      RAISE INFO '%.% Doesnot exist, creating table', userSchema, qryLogTblName;
-      mycommand := 'CREATE TABLE ' || userSchema || '.' || qryLogTblName || '
+	RAISE NOTICE 'TABLE EXISTS:%', tbl_exists;
+	IF tbl_exists = 'f' THEN
+		RAISE INFO '%.% Doesnot exist, creating table', userSchema, qryLogTblName ;
+		mycommand := 'CREATE TABLE ' || userSchema || '.' || qryLogTblName || '
 				(
 				  logsession text,
 				  logcmdcount text,
@@ -54,52 +52,46 @@ CREATE OR REPLACE FUNCTION haystack_ui.load_querylog(haystackschema TEXT, usersc
 				PARTITION BY RANGE(logsessiontime) ( START (date ''1900-01-01'') INCLUSIVE END ( date ''1900-01-02'') EXCLUSIVE
 				EVERY (INTERVAL ''1 day''));';
 
-      RAISE INFO 'SQL [%]', mycommand;
-      EXECUTE mycommand;
-    END IF;
+		RAISE INFO 'SQL [%]', mycommand;
+		EXECUTE mycommand;
+	END IF;
 
--- CREATE PARTITION - find the distinct dates from the external table to create partitions
-    sql := 'SELECT logtime::date FROM ' || userSchema || '.' || ext_TblName || ' group by logtime::date';
-    RAISE NOTICE 'sql %', sql;
-    FOR rec IN EXECUTE sql LOOP
-      RAISE NOTICE '--> MONTH %', rec.logtime;
-      SELECT create_month_partition(lower(userSchema), lower(qryLogTblName), rec.logtime)
-      INTO result;
-      IF result = 'f'
-      THEN RAISE NOTICE 'Partition Already Exists';
-      ELSE RAISE NOTICE 'Partition Created';
-      END IF;
-      mycommand :='SELECT COUNT(*) FROM ' || haystackSchema || '.query_log_dates where query_log_id=' || queryID ||
-                  ' AND log_date = ''' || rec.logtime || ''';';
-      EXECUTE mycommand
-      INTO recCount;
-      IF (recCount = 0)
-      THEN
-        mycommand :=
-        'INSERT INTO ' || haystackSchema || '.query_log_dates(query_log_id,log_date) values(' || queryID || ',''' ||
-        rec.logtime || ''');';
-        EXECUTE mycommand;
-        RAISE NOTICE 'Inserted Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
-      ELSE
-        RAISE NOTICE 'Found Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
-      END IF;
-    END LOOP;
+	-- CREATE PARTITION - find the distinct dates from the external table to create partitions
+        sql := 'SELECT logtime::date FROM ' || userSchema || '.'  || ext_TblName || ' group by logtime::date';
+        raise notice 'sql %',sql;
+         for rec in execute sql loop
+                 RAISE NOTICE '--> MONTH %', rec.logtime ;
+                 SELECT create_month_partition(lower(userSchema),lower(qryLogTblName),rec.logtime) INTO result;
+                 IF result = 'f'
+			THEN RAISE NOTICE 'Partition Already Exists';
+			ELSE RAISE NOTICE 'Partition Created';
+                 END IF;
+                 mycommand := 'SELECT COUNT(*) FROM ' || haystackSchema || '.query_log_dates where query_log_id=' || queryID || ' AND log_date = '''|| rec.logtime || ''';';
+                 EXECUTE mycommand INTO recCount;
+                 if (recCount = 0) THEN
+			mycommand := 'INSERT INTO ' || haystackSchema || '.query_log_dates(query_log_id,log_date) values(' || queryID || ',''' || rec.logtime || ''');';
+			EXECUTE mycommand;
+			RAISE NOTICE 'Inserted Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
+		 else
+			RAISE NOTICE 'Found Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
+		 end if;
+         end loop;
 
 
--- LOAD Queries calculate duration
-    sql := 'INSERT INTO ' || userSchema || '.' || qryLogTblName || '(logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql)
+	-- LOAD Queries calculate duration
+	sql := 'INSERT INTO ' || userSchema || '.' || qryLogTblName || '(logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql)
 		 SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,
                  max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql
 		FROM  ' || userSchema || '.' || ext_TblName || ' A
 		WHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL
 		GROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid
 		HAVING length(min(logdebug)) > 0;';
-    RAISE INFO 'INSERTING QUERIES %.%', userSchema, qryLogTblName;
-    EXECUTE sql;
+	RAISE INFO 'INSERTING QUERIES %.%', userSchema, qryLogTblName;
+	EXECUTE sql;
 
---Categorizing the queries by type
+	 --Categorizing the queries by type
 
-    sql := 'UPDATE ' || userSchema || '.' || qryLogTblName || '
+	sql := 'UPDATE ' || userSchema || '.' || qryLogTblName || '
 		SET QRYTYPE = case
 	   	        when upper(sql) like ''%SET%'' THEN ''SET CONFIGURATION''
 			when upper(sql) like ''%SELECT%'' THEN ''SELECT''
@@ -126,40 +118,38 @@ CREATE OR REPLACE FUNCTION haystack_ui.load_querylog(haystackschema TEXT, usersc
 			when sql like ''%;%'' THEN ''MULTIPLE SQL STATEMENTS''
 		else ''OTHERS''
 	end;';
-    RAISE INFO 'CATEGORIZING QUERIES %.%', userSchema, qryLogTblName;
-    EXECUTE sql;
+	RAISE INFO 'CATEGORIZING QUERIES %.%', userSchema, qryLogTblName;
+	EXECUTE sql;
 
--- Update Query Count and Sum Duration for Each Date for this QueryLogId
-    sql := 'UPDATE ' || haystackSchema || '.query_log_dates
+	-- Update Query Count and Sum Duration for Each Date for this QueryLogId
+	sql := 'UPDATE ' || haystackSchema || '.query_log_dates
 		set query_count = X.query_count, sum_duration = X.sum_duration
 		FROM (select logsessiontime::date as log_date,count(*) as query_count, EXTRACT(EPOCH FROM sum(logduration)) as sum_duration
 		from ' || userSchema || '.' || qryLogTblName || '
 		group by logsessiontime::date ) as X
 		where query_log_dates.log_date = X.log_date
 		and query_log_id = ' || queryID || ';';
-    RAISE INFO 'UPDATE QUERY_LOG_DATE STATS';
-    EXECUTE sql;
+	RAISE INFO 'UPDATE QUERY_LOG_DATE STATS';
+	EXECUTE sql;
 
--- Recreate query_metadata table
-    sql:= 'DROP TABLE IF EXISTS ' || userSchema || '.query_metadata;';
-    EXECUTE sql;
+	-- Recreate query_metadata table
+	sql:= 'DROP TABLE IF EXISTS ' || userSchema || '.query_metadata;';
+	EXECUTE sql;
 
-    sql := 'CREATE TABLE ' || userSchema ||
-           '.query_metadata( type text, value text ) WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);';
-    EXECUTE sql;
+	sql := 'CREATE TABLE ' || userSchema || '.query_metadata( type text, value text ) WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);';
+	EXECUTE sql;
 
-    sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''dbname'', logdatabase ' ||
-           ' FROM ' || userSchema || '.queries;';
-    EXECUTE sql;
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''dbname'', logdatabase ' ||
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
 
-    sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''username'', loguser ' ||
-           ' FROM ' || userSchema || '.queries;';
-    EXECUTE sql;
-    RAISE NOTICE 'Complete';
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''username'', loguser ' ||
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+         RAISE NOTICE 'Complete';
 
-  END;
-  -- outer function wrapper
-  $BODY$
+END; -- outer function wrapper
+$BODY$
 LANGUAGE plpgsql VOLATILE;
 ALTER FUNCTION haystack_ui.load_querylog( TEXT, TEXT, TEXT, TEXT, INTEGER )
 OWNER TO gpadmin;

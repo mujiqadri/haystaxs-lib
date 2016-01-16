@@ -59,7 +59,7 @@ public class GPSDTest extends TestCase {
     }
 
     public void testWorkload() throws Exception {
-        Integer workloadId = 25;
+        Integer workloadId = 20;   // 25 for tpc-ds, 20 for citi queries
 
         ConfigProperties configProperties = new ConfigProperties();
 

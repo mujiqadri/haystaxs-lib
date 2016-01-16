@@ -115,9 +115,10 @@ public class ModelService {
             try {
                 selectStatement = (Select) statement;
                 stmtType = "SELECT";
+                Select selectObjForJson = new Select();
                 // AST Generation Processing
                 try {
-                    Select selectObjForJson = new Select();
+
                     selectObjForJson = selectStatement;
 
                     // Create AST for the query and return it
@@ -128,7 +129,8 @@ public class ModelService {
 
 
                 } catch (Exception e) {
-                    log.debug("Error in generating AST for Select Statement :" + query + " Exception:" + e.toString());
+                    jsonAST = getStatementJSON(selectObjForJson);
+                    log.debug("Error in generating AST for Select Statement or WhereClause not found in Stmt:" + query + " Exception:" + e.toString());
                 }
 
             } catch (Exception e) {
