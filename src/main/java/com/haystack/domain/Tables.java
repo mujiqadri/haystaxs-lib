@@ -3,6 +3,7 @@ package com.haystack.domain;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSerializer;
+import com.haystack.parser.util.IntTypeAdapter;
 import com.haystack.util.DBConnectService;
 
 import org.slf4j.Logger;
@@ -51,11 +52,17 @@ public class Tables  {
             gsonBuilder.registerTypeAdapter(Double.class,  new JsonSerializer<Double>() {
                 @Override
                 public JsonElement serialize(final Double src, final Type typeOfSrc, final JsonSerializationContext context) {
-                    BigDecimal value = BigDecimal.valueOf(src);
+                    try {
+                        BigDecimal value = BigDecimal.valueOf(src);
+                        return new JsonPrimitive(value);
+                    } catch (Exception e) {
+                        return new JsonPrimitive(-1);
+                    }
 
-                    return new JsonPrimitive(value);
                 }
             });
+            gsonBuilder.registerTypeAdapter(int.class, new IntTypeAdapter());
+            gsonBuilder.registerTypeAdapter(Integer.class, new IntTypeAdapter()).create();
 
             //gson = gsonBuilder.create();
 
@@ -161,10 +168,15 @@ public class Tables  {
     public String loadfromStats(DBConnectService dbConn, boolean return_Json) {
         String jsonResult = "";
         try {
+
+
             String sqlTbl = "\t\tSELECT tbl.oid as table_oid, sch.nspname as schema_name, relname as table_name,\n" +
-                    "\t\t  tbl.reltuples::numeric as NoOfRows,\n" +
+                    // Changed Muji 23Jan 2016 :tbl.reltuples::bigint
+                    //"\t\t  to_char(tbl.reltuples::numeric,'9999999999999999D99') as NoOfRows,\n" +
+                    "\t\t  tbl.reltuples::bigint as NoOfRows,\n" +
+
                     "\t\t  tbl.relpages as relPages,\n" +
-                    "\t\t  ((tbl.relpages * 32) /(1024*1024)) sizeinGB,\n" +
+                    "\t\t  ((tbl.relpages::numeric * 32) /(1024*1024)) sizeinGB,\n" +
                     "\t\t  tbl.oid                  AS tableId, relkind ,\n" +
                     "\t\t  CASE WHEN tbl.relstorage = 'a' THEN 'append-optimized'\n" +
                     "\t\t  WHEN tbl.relstorage = 'h' THEN 'heap'\n" +
@@ -210,7 +222,9 @@ public class Tables  {
                 tbl.stats.relPages = rsTbl.getInt("relpages");
                 tbl.stats.noOfColumns = Integer.parseInt(rsTbl.getString("noOfColumns"));
                 tbl.stats.isColumnar = (rsTbl.getString("IsColumnar").equals("t")) ? true : false;
-                tbl.stats.noOfRows = rsTbl.getDouble("NoOfRows");
+                String sNoOfRows = rsTbl.getString("NoOfRows");
+
+                tbl.stats.noOfRows = Double.valueOf(sNoOfRows);
                 tbl.stats.sizeOnDisk = Float.parseFloat(rsTbl.getString("sizeinGB"));
                 tbl.stats.sizeUnCompressed = Float.parseFloat(rsTbl.getString("sizeinGB"));
                 tbl.stats.compressType = rsTbl.getString("compressType");

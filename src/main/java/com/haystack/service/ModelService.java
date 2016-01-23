@@ -7,6 +7,7 @@ import com.haystack.domain.*;
 import com.haystack.parser.JSQLParserException;
 import com.haystack.parser.statement.update.Update;
 import com.haystack.parser.util.ASTGenerator;
+import com.haystack.util.ConfigProperties;
 import com.haystack.util.HSException;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.slf4j.Logger;
@@ -27,17 +28,85 @@ import java.util.*;
  *
  */
 public class ModelService {
-
+    private ConfigProperties configProperties;
 
     static Logger log = LoggerFactory.getLogger(ModelService.class.getName());
     static Tables tablelist;
+    private Integer gpsd_id;
+    private Date wl_start_date;
+    private Date wl_end_date;
+    private Date model_creation_date;
     private Integer userId = null;
 
     public ModelService(){
         tablelist = new Tables();
+        configProperties = new ConfigProperties();
+        try {
+            configProperties.loadProperties();
+        } catch (Exception e) {
+            //throw new Exception("Unable to read config.properties files");
+        }
     }
     public void setTableList(Tables tbllist){
         this.tablelist = tbllist;
+    }
+
+    public void generateRecommendations() {
+        try {
+            // Fetch Recommendation Engine settings from config.properties file
+            Integer columnarThresholdPercent = Integer.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
+            Integer topNPercent = Integer.valueOf(configProperties.properties.getProperty("re.topNPercent"));
+
+
+            Iterator<Map.Entry<String, Table>> entries = tablelist.tableHashMap.entrySet().iterator();
+            while (entries.hasNext()) {
+                Map.Entry<String, Table> entry = entries.next();
+                String currKey = entry.getKey();
+                Table currTable = entry.getValue();
+
+                if (currTable.joins.size() > 0) { // If there are no joins then ignore this Table
+                    // A) Distribution Key:
+                    //     Check if the current distibution key is being used in most of the join,
+                    //     if not then recommend DK which is used in joins (higher workload score) for larger tables
+
+                    // A.2) Check if attribute data types match for all joins, if not add this recommendation
+                    Integer i = currTable.joins.size();
+                }
+                // B) Columnar & Compression Rule:
+                //     Check to see if less than 30% (rs.ColumnarThresholdPercent) of attributes are used,
+                //     if yes then check if the table is in TopNPercent in rows (re.topNPercent) threshold
+                //     if yes then
+                //             recommend columnar, if row storage
+                //             recommend compression, if uncompressed
+                // B.2) If average column usage is greater than the threshold  (rs.ColumnarThresholdPercent) then
+                //      check if the storage type is columnar, then recommend heap storage
+                // B.3) If the table is in bottomNPercent and if its columnar and compressed, then recommend heap
+                //      storage and uncompressed
+                // C) Partitions:
+                //     Check to see if the table is partititioned
+                //     if NO
+                //         then check if table is in re.TopNPercent tables by rows
+                //         if YES
+                //             then identify the attribute which is used most frequently in where clauses
+                //             give priority to date attributes
+                //    if YES
+                //         then check if the partitioned attribute is used in most of the where clauses
+                //         give bias to date attribute, recommend two or three possible options for partition columns
+                float currentWorkload = currTable.stats.getWorkloadScore();
+
+                float workloadScore = 0;
+
+                if (currentWorkload > 0) {
+                    //workloadScore = currentWorkload / totalWorkloadScore;
+                }
+
+                currTable.stats.setModelScore(workloadScore);
+                tablelist.tableHashMap.put(currKey, currTable);
+            }
+
+        } catch (Exception e) {
+
+        }
     }
 
     public void scoreModel(){
@@ -102,7 +171,8 @@ public class ModelService {
                 // Statement is not a select/update or supported by Parser, store as is;
                 jsonAST = sqls;
                 log.error("ModelService.processSQL() : Error in parsing SQL=" + query.toString());
-                throw e;
+                return query;
+                //throw e;
                 // HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
             }
             Select selectStatement = null;
@@ -148,6 +218,11 @@ public class ModelService {
 
             if (stmtType == "SELECT") {
                 strTableList = currtablesNF.getSemantics(selectStatement, "1");
+                if (strTableList.size() > 0) {
+                    QryTable q = new QryTable();
+                    q.tablename = strTableList.get(0).toString();
+                    currtablesNF.tables.add(q);
+                }
             } else if (stmtType == "UPDATE") {
                 strTableList = currtablesNF.getSemantics(updateStatement, "1");
                 if (strTableList.size() > 0) {

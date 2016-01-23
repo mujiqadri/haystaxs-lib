@@ -151,7 +151,8 @@ public class CatalogService {
             String whereSQL = schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
                     "' and logsessiontime <='" + endDate + "'" +
                     //" and  EXTRACT(EPOCH FROM logduration) > 0 " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
-                    //" and sql like '%where%' " + // To Test SQL with where clause
+                    " and sql like '%catalog_sales%' " + // To Test SQL with where clause
+                    " and sql not like '%pg_catalog%'" +
                     " and logdatabase = '" + dbname + "'";        // Get queries related to the GPSD database to minimze repeat processing of queries
             //" and lower(sql) like 'set%search_path%'" +  // Added this to test search_path functionality
             String orderbySQL = " order by logsessiontime;";
@@ -202,6 +203,11 @@ public class CatalogService {
                             String[] s1 = sQry.split("=");
                             current_search_path = s1[1].toString().replaceAll("\\s+", "");
                         }
+                        // Remove \\ double backslash from the input to avoid CCJSqlParser lexical error
+                        if (sQry.contains("\\")) {
+                            String sTrimmedQry = sQry.replaceAll("\\\\", "");
+                            sQry = sTrimmedQry;
+                        }
 
                         nQry = extractSelectFromInsert(sQry);  // extract select portion from insert statement
                         if (nQry.equals(sQry)) {
@@ -212,7 +218,7 @@ public class CatalogService {
                         try {
                             String jsonAST = ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
                             if (jsonAST.length() > 0) {
-                                persistAST(schemaName, queryId, jsonAST);
+                                //persistAST(schemaName, queryId, jsonAST);
                             }
                         } catch (Exception e) {
                             log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
@@ -225,6 +231,7 @@ public class CatalogService {
             rsQry.close();
 
             ms.scoreModel();
+            ms.generateRecommendations();
             String model_json = ms.getModelJSON();
 
             // Create a UserInbox Message for Completed Processing
@@ -329,6 +336,7 @@ public class CatalogService {
                 }
             }
         } else {
+
             ret = input;
         }
         return ret;
@@ -534,6 +542,43 @@ public class CatalogService {
         String sql = "\n" +
                 "CREATE EXTERNAL  TABLE " + userid + "." + extTableName + "\n" +
                 "(\n" +
+                "    logtime text,\n" +
+                "    loguser text,\n" +
+                "    logdatabase text,\n" +
+                "    logpid text,\n" +
+                "    logthread text,\n" +
+                "    loghost text,\n" +
+                "    logport text,\n" +
+                "    logsessiontime text,\n" +
+                "    logtransaction text,\n" +
+                "    logsession text,\n" +
+                "    logcmdcount text,\n" +
+                "    logsegment text,\n" +
+                "    logslice text,\n" +
+                "    logdistxact text,\n" +
+                "    loglocalxact text,\n" +
+                "    logsubxact text,\n" +
+                "    logseverity text,\n" +
+                "    logstate text,\n" +
+                "    logmessage text,\n" +
+                "    logdetail text,\n" +
+                "    loghint text,\n" +
+                "    logquery text,\n" +
+                "    logquerypos int,\n" +
+                "    logcontext text,\n" +
+                "    logdebug text,\n" +
+                "    logcursorpos text,\n" +
+                "    logfunction text,\n" +
+                "    logfile text,\n" +
+                "    logline text,\n" +
+                "    logstack text\n" +
+                ")\n" +
+                " LOCATION ( 'gpfdist://" + gpfdist_host + ":" + gpfdist_port + queryLogDirectory + "/*.csv' )\n" +
+                "FORMAT 'CSV' (delimiter ',' null '' escape '\\\\' quote '\"' FILL MISSING FIELDS) " +
+                " LOG ERRORS INTO " + userid + ".err_queries SEGMENT REJECT LIMIT 20 PERCENT;";
+
+               /* "CREATE EXTERNAL  TABLE " + userid + "." + extTableName + "\n" +
+                "(\n" +
                 "    logtime timestamp with time zone,\n" +
                 "    loguser text,\n" +
                 "    logdatabase text,\n" +
@@ -567,6 +612,7 @@ public class CatalogService {
                 ")\n" +
                 " LOCATION ( 'gpfdist://" + gpfdist_host + ":" + gpfdist_port + queryLogDirectory + "/*.csv' )\n" +
                 "FORMAT 'CSV' (delimiter ',' null '' escape '\\\\' quote '\"');";
+                */
 
         createSchema(userid);
         dbConnect.execNoResultSet("DROP EXTERNAL TABLE IF EXISTS " + userid + "." + extTableName + ";");

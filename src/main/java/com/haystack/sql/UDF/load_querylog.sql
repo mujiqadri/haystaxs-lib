@@ -33,6 +33,7 @@ BEGIN -- outer function wrapper
 		RAISE INFO '%.% Doesnot exist, creating table', userSchema, qryLogTblName ;
 		mycommand := 'CREATE TABLE ' || userSchema || '.' || qryLogTblName || '
 				(
+				   id serial,
 				  logsession text,
 				  logcmdcount text,
 				  logdatabase text,
