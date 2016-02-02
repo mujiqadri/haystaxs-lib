@@ -69,7 +69,7 @@ public class Tables  {
             //gson = gsonBuilder.create();
 
             Gson objGson =  gsonBuilder.setPrettyPrinting().create();
-            sw = objGson.toJson(tableHashMap);
+            sw = objGson.toJson(this);
         }catch(Exception e){
             log.error("Error generating json " + e.toString());
         }
