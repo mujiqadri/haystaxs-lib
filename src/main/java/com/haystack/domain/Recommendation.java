@@ -10,9 +10,10 @@ public class Recommendation {
     public String schema;
     public String tableName;
 
-    public enum recommendationType {DK, DATATYPE, STORAGE, COMPRESSION, PARTITION}
+    public enum RecommendationType {DK, DATATYPE, STORAGE, COMPRESSION, PARTITION}
 
-    public String Description;
-    public String Columns;
+    public RecommendationType type;
+    public String description;
+    public String anamoly;
 
 }

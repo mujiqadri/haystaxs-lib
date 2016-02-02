@@ -13,16 +13,17 @@ public class Join {
     public String rightTable;
     public HashMap<String, JoinTuple> joinTuples;
     public String level;
-    private int joinUsageScore;
-    private int score;  // This will be calculated based on below formula
+    private int supportCount;  // This is the joinUsage score, how many times this join has occured in the query set
+    private float confidence;  // This will be calculated based on below formula
                         // joinUsage * (LeftTable (Avg cols) * (# of Rows)) * (RightTable (Avg cols) * (# of Rows))
 
     public Join (){
-        joinUsageScore = 1;
+        supportCount = 1;
         joinTuples = new HashMap<String, JoinTuple>();
     }
-    public void incrementUsageScore(){
-        joinUsageScore++;
+
+    public void incrementSupportCount() {
+        supportCount++;
     }
     public boolean isEqual(Join currJoin){
         boolean isMatch = true;
@@ -61,4 +62,17 @@ public class Join {
             return tablesMatched;
         }
     }
+
+    public int getSupportCount() {
+        return supportCount;
+    }
+
+    public void setConfidence(float confidenceCalculated) {
+        confidence = confidenceCalculated;
+    }
+
+    public float getConfidence() {
+        return confidence;
+    }
+
 }

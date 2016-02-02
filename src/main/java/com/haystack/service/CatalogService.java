@@ -146,12 +146,19 @@ public class CatalogService {
             // Fetch the queries based on start and end date
             // Update: 11Jan2016= Order by date ASC -- So that we can set search_path while processing queries in the order they were executed
             // Update: 11Jan2016= Fetch only queries related to the gpsd_db linked to this workload
-
+            Double minDurationSeconds;
+            try {
+                // Update: 01Feb2016= Read config.properties query.mindurationseconds and add criteria in fetching queries, this is called pruning
+                // in order to minimize computation and relevant.
+                minDurationSeconds = Double.parseDouble(this.configProperties.properties.getProperty("query.mindurationseconds"));
+            } catch (Exception e) {
+                minDurationSeconds = 0.0;
+            }
 
             String whereSQL = schemaName + "." + queryTblName + " where logsessiontime >= '" + startDate +
                     "' and logsessiontime <='" + endDate + "'" +
-                    //" and  EXTRACT(EPOCH FROM logduration) > 0 " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
-                    " and sql like '%catalog_sales%' " + // To Test SQL with where clause
+                    " and  ( EXTRACT(EPOCH FROM logduration) > " + minDurationSeconds + " OR ( EXTRACT(EPOCH FROM logduration) <= " + minDurationSeconds + " AND lower(sql) like '%set%search_path%')) " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
+                    //" and sql like '%catalog_sales%' " + // To Test SQL with where clause
                     " and sql not like '%pg_catalog%'" +
                     " and logdatabase = '" + dbname + "'";        // Get queries related to the GPSD database to minimze repeat processing of queries
             //" and lower(sql) like 'set%search_path%'" +  // Added this to test search_path functionality

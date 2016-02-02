@@ -23,6 +23,7 @@ public class Table {
     public HashMap<String, Join> joins;
     public HashMap<String, Partition> partitions;
 
+
     static Logger log = LoggerFactory.getLogger(Table.class.getName());
 
 
@@ -79,7 +80,7 @@ public class Table {
 
                 if (currJoin.isEqual(join)) {
                     found = true;
-                    currJoin.incrementUsageScore();
+                    currJoin.incrementSupportCount();
                 }
             }
             if (found == false) {

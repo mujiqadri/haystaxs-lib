@@ -24,6 +24,9 @@ public class TableStats {
     public String sizeForDisplayUnCompressed;  // Stores the scale of the size MB / GB/ TB
 
     private float modelScore;
+    public Double avgColUsage;
+    public int rank; // Rank by size
+    public Double percentile; // Percentile by size
     // Added 03Sep2015 Muji
     private Integer usageFrequency;  // No of times this table was used in the query workload
     private Double executionTime;   // Total time in seconds taken by this table in the workload
@@ -35,6 +38,7 @@ public class TableStats {
         executionTime = 0.0;
         workloadScore = 0;
         relPages = 0;
+        avgColUsage = 0.0;
     }
     public void addExecutionTime( Double timeSlice){
         executionTime += timeSlice;

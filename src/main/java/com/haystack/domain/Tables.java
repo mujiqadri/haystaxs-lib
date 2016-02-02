@@ -29,12 +29,14 @@ import java.lang.reflect.Type;
  */
 public class Tables  {
     public HashMap<String,Table> tableHashMap;
+    public HashMap<String, Recommendation> recommendations;
     //public HashMap<String,Join> joinHashMap;  // Commented because join is now created as child for Left and Right Table
 
     private static Logger log = LoggerFactory.getLogger(Tables.class.getName());
 
     public Tables(){
         tableHashMap = new HashMap<String, Table>();
+        recommendations = new HashMap<String, Recommendation>();
     }
     public void add(String key, Table t){
         tableHashMap.put(key, t);
@@ -74,6 +76,11 @@ public class Tables  {
         return sw.toString();
     }
 
+    // TODO
+
+    public float getSizeOfTable(String tableName_schema_key) {
+        return 0;
+    }
     public Column findColumn(String schemaName, String tableName, String columnName, String current_search_path) {
         Table tbl = null;
         Column col = null;

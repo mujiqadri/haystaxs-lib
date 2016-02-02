@@ -5,6 +5,7 @@ import com.google.gson.*;
 import com.haystack.domain.*;
 
 import com.haystack.parser.JSQLParserException;
+import com.haystack.parser.expression.DoubleValue;
 import com.haystack.parser.statement.update.Update;
 import com.haystack.parser.util.ASTGenerator;
 import com.haystack.util.ConfigProperties;
@@ -51,12 +52,22 @@ public class ModelService {
         this.tablelist = tbllist;
     }
 
+    private Recommendation createNewRecommendation(Table currTable, Recommendation.RecommendationType type) {
+        Recommendation recommendation = new Recommendation();
+        recommendation.schema = currTable.schema;
+        recommendation.tableName = currTable.tableName;
+        recommendation.oid = currTable.oid;
+        recommendation.type = type;
+        return recommendation;
+    }
     public void generateRecommendations() {
         try {
             // Fetch Recommendation Engine settings from config.properties file
-            Integer columnarThresholdPercent = Integer.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
-            Integer topNPercent = Integer.valueOf(configProperties.properties.getProperty("re.topNPercent"));
+            Double columnarThresholdPercent = Double.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
+            Double topNPercent = Double.valueOf(configProperties.properties.getProperty("re.topNPercent"));
+            Double bottomNPercent = Double.valueOf(configProperties.properties.getProperty("re.bottomNPercent"));
 
+            Integer recId = 1;
 
             Iterator<Map.Entry<String, Table>> entries = tablelist.tableHashMap.entrySet().iterator();
             while (entries.hasNext()) {
@@ -68,40 +79,134 @@ public class ModelService {
                     // A) Distribution Key:
                     //     Check if the current distibution key is being used in most of the join,
                     //     if not then recommend DK which is used in joins (higher workload score) for larger tables
+                    Iterator<Map.Entry<String, Join>> joins = currTable.joins.entrySet().iterator();
+                    float maxConfidence = -1;
+                    ArrayList<String> maxConfidenceCandidateDK = new ArrayList<String>();
 
-                    // A.2) Check if attribute data types match for all joins, if not add this recommendation
-                    Integer i = currTable.joins.size();
+                    while (joins.hasNext()) {
+
+                        Map.Entry<String, Join> join = joins.next();
+                        String joinKey = join.getKey();
+                        Join currJoin = join.getValue();
+
+                        if (currJoin.getConfidence() > maxConfidence) {  // Current Join Usage Score is greater makes this the max one
+                            for (Map.Entry<String, JoinTuple> entryJT : currJoin.joinTuples.entrySet()) {
+                                if (currTable.tableName.equals(currJoin.leftTable)) {  // Add left column
+                                    maxConfidenceCandidateDK.add(entryJT.getValue().leftcolumn);
+                                } else { // Add Right Column
+                                    maxConfidenceCandidateDK.add(entryJT.getValue().rightcolumn);
+                                }
+                            }
+                            maxConfidence = currJoin.getConfidence();
+                        }
+                        // A.2) Check if attribute data types match for this join, if not add this recommendation
+                        for (Map.Entry<String, JoinTuple> entryJT : currJoin.joinTuples.entrySet()) {
+                            JoinTuple currJT = entryJT.getValue();
+                            Column leftColumn = tablelist.findColumn(currJoin.leftSchema, currJoin.leftTable, currJT.leftcolumn, "");
+                            Column rightColumn = tablelist.findColumn(currJoin.rightSchema, currJoin.rightTable, currJT.rightcolumn, "");
+
+                            Boolean mismatch = false;
+                            String desc = "Datatype mismatch for join between " + currJoin.leftSchema + "." + currJoin.leftTable + "." + currJT.leftcolumn +
+                                    " and " + currJoin.rightSchema + "." + currJoin.rightTable + "." + currJT.rightcolumn;
+                            String anamoly = leftColumn.isMatchDataType(rightColumn);
+
+                            if (anamoly.length() > 0) {
+                                Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DATATYPE);
+                                recommendation.description = desc;
+                                recommendation.anamoly = anamoly;
+                                tablelist.recommendations.put(recId.toString(), recommendation);
+                                recId++;
+                            }
+                        }
+                    }
+                    // A.1) Get Distribution Key, if it matches the candidateDK then ignore else add Recommendation with the CandidateDK
+                    String recKey = "";
+                    for (String currCol : maxConfidenceCandidateDK) {
+                        if (recKey.length() == 0) {
+                            recKey = currCol;
+                        } else {
+                            recKey += "," + currCol;
+                        }
+                    }
+                    for (String candidateColumn : maxConfidenceCandidateDK) {
+                        if (currTable.dk.containsKey(candidateColumn) == false) {
+                            // DK and Candidate Key Mismatch, add recommendation for Candidate Key
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
+                            recommendation.description = "Distribution key should be set to " + recKey;
+                            recommendation.anamoly = "Confidence for new key:" + maxConfidence;
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                    }
+
+
                 }
+                // Objective Measure of Interestingness, Recommendation should be generated for only TopNPercent of tables
                 // B) Columnar & Compression Rule:
                 //     Check to see if less than 30% (rs.ColumnarThresholdPercent) of attributes are used,
                 //     if yes then check if the table is in TopNPercent in rows (re.topNPercent) threshold
                 //     if yes then
                 //             recommend columnar, if row storage
                 //             recommend compression, if uncompressed
-                // B.2) If average column usage is greater than the threshold  (rs.ColumnarThresholdPercent) then
-                //      check if the storage type is columnar, then recommend heap storage
-                // B.3) If the table is in bottomNPercent and if its columnar and compressed, then recommend heap
+                Double avgColUsagePercent = currTable.stats.avgColUsage * 100 / currTable.stats.noOfColumns;
+
+                if (avgColUsagePercent <= columnarThresholdPercent) {  // ColAvgUsage is less than ColumnThreshold
+                    if ((100 - currTable.stats.percentile) < topNPercent) { // If Table in TopNPercent then
+                        if (!currTable.stats.isColumnar) { // If Table is heap then recommend columnar
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.STORAGE);
+                            recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be changed to columnar.";
+                            recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " and average column usage in queries:" + avgColUsagePercent + " Threshold: AvgColUsage="
+                                    + columnarThresholdPercent + " topNPercent=" + topNPercent;
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                        if (!currTable.stats.isCompressed) { // Recommend compressing the table if Cluster CPU Usage is less than 70% most of the time
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.COMPRESSION);
+                            recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be compressed if cluster CPU is less than 70% threshold";
+                            recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " and average column usage in queries:" + avgColUsagePercent + " Threshold: AvgColUsage="
+                                    + columnarThresholdPercent + " topNPercent=" + topNPercent;
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                    }
+
+                } else {
+                    // B.2) If average column usage is greater than the threshold  (rs.ColumnarThresholdPercent) then
+                    //      check if the storage type is columnar, then recommend heap storage
+                    if (currTable.stats.isColumnar) {
+                        Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.STORAGE);
+                        recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be changed to heap storage.";
+                        recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " and average column usage in queries:" + avgColUsagePercent + " Threshold: AvgColUsage="
+                                + columnarThresholdPercent + " topNPercent=" + topNPercent;
+                        tablelist.recommendations.put(recId.toString(), recommendation);
+                        recId++;
+                    }
+                }
+                // B.3) If the table is in bottomNPercent and if its columnar, then recommend heap
                 //      storage and uncompressed
+                if (currTable.stats.percentile <= bottomNPercent) {
+                    if (currTable.stats.isColumnar) {
+                        Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.STORAGE);
+                        recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be changed to heap storage.";
+                        recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " is in the BottomN% smallest tables in the Database. Threshold: bottomNPercent=" + bottomNPercent;
+                        tablelist.recommendations.put(recId.toString(), recommendation);
+                        recId++;
+                    }
+                }
                 // C) Partitions:
                 //     Check to see if the table is partititioned
-                //     if NO
-                //         then check if table is in re.TopNPercent tables by rows
-                //         if YES
-                //             then identify the attribute which is used most frequently in where clauses
-                //             give priority to date attributes
-                //    if YES
-                //         then check if the partitioned attribute is used in most of the where clauses
-                //         give bias to date attribute, recommend two or three possible options for partition columns
-                float currentWorkload = currTable.stats.getWorkloadScore();
+                if (currTable.stats.isPartitioned) {
+                    //    if YES
+                    //         then check if the partitioned attribute is used in most of the where clauses
+                    //         give bias to date attribute, recommend two or three possible options for partition columns
 
-                float workloadScore = 0;
-
-                if (currentWorkload > 0) {
-                    //workloadScore = currentWorkload / totalWorkloadScore;
+                } else {
+                    //     if NO
+                    //         then check if table is in re.TopNPercent tables by rows
+                    //         if YES
+                    //             then identify the attribute which is used most frequently in where clauses
+                    //             give priority to date attributes
                 }
-
-                currTable.stats.setModelScore(workloadScore);
-                tablelist.tableHashMap.put(currKey, currTable);
             }
 
         } catch (Exception e) {
@@ -109,20 +214,24 @@ public class ModelService {
         }
     }
 
+
     public void scoreModel(){
         try {
             float totalWorkloadScore = 0;
+            Double totalSizeofTables = 0.0;
             // Calculate total workload score
             Iterator<Map.Entry<String, Table>> entriesForTotal = tablelist.tableHashMap.entrySet().iterator();
             while(entriesForTotal.hasNext()) {
                 Map.Entry<String, Table> entry = entriesForTotal.next();
                 String currKey = entry.getKey();
                 Table currTable = entry.getValue();
+                totalSizeofTables += Double.valueOf(currTable.stats.sizeUnCompressed);
                 float currentWorkload = currTable.stats.getWorkloadScore();
                 totalWorkloadScore += currentWorkload;
             }
 
 
+            // Based on the Total Workload Score, Rationalize on a scale of 0-100
             Iterator<Map.Entry<String, Table>> entries = tablelist.tableHashMap.entrySet().iterator();
             while(entries.hasNext()) {
                 Map.Entry<String, Table> entry = entries.next();
@@ -135,10 +244,78 @@ public class ModelService {
                 if (currentWorkload > 0) {
                     workloadScore = currentWorkload / totalWorkloadScore;
                 }
-
                 currTable.stats.setModelScore(workloadScore);
+
+                // Calculate Average Column Usage
+                try {
+                    // Calculate confidence for all joins, using Confidence = Support x (LeftTableWeight + RightTableWeight)
+                    Double totalColumnUsage = 0.0;
+                    Integer columnCount = currTable.columns.size();
+                    Double avgColUsage = 0.0;
+                    for (Map.Entry<String, Column> entryColumn : currTable.columns.entrySet()) {
+                        Column currColumn = entryColumn.getValue();
+                        totalColumnUsage += currColumn.getUsageScore();
+                        columnCount++;
+                    }
+                    avgColUsage = totalColumnUsage / columnCount;
+                    currTable.stats.avgColUsage = avgColUsage;
+                } catch (Exception e) {
+                    log.error("Error in calculating join confidence for Table:" + currTable.schema + "." + currTable.tableName);
+                    currTable.stats.avgColUsage = 0.0;
+                }
+
+                // Calculate confidence for all joins, using Confidence = Support x (LeftTableWeight + RightTableWeight)
+                try {
+                    for (Map.Entry<String, Join> entryJoin : currTable.joins.entrySet()) {
+                        Join currJoin = entryJoin.getValue();
+                        Table leftTable = tablelist.findTable(currJoin.leftSchema, currJoin.leftTable);
+                        Table rightTable = tablelist.findTable(currJoin.rightSchema, currJoin.rightTable);
+
+                        Double leftTableWeight = 0.0, rightTableWeight = 0.0;
+                        if (leftTable.stats.isColumnar == true) { // If table is columnar then
+                            leftTableWeight = leftTable.stats.sizeUnCompressed * leftTable.stats.avgColUsage;
+                        } else {
+                            leftTableWeight = (double) leftTable.stats.sizeUnCompressed;
+                        }
+                        if (rightTable.stats.isColumnar == true) { // If table is columnar then
+                            rightTableWeight = rightTable.stats.sizeUnCompressed * rightTable.stats.avgColUsage;
+                        } else {
+                            rightTableWeight = (double) rightTable.stats.sizeUnCompressed;
+                        }
+                        float confidence = (float) (currJoin.getSupportCount() * (leftTableWeight + rightTableWeight));
+                        currJoin.setConfidence(confidence);
+                    }
+                } catch (Exception e) {
+                    log.error("Error in calculating join confidence for Table:" + currTable.schema + "." + currTable.tableName);
+                }
                 tablelist.tableHashMap.put(currKey, currTable);
+
             }
+            // Calculate Percentile and Rank for tables in the Hashmap
+            List<Table> tablesSortedBySize = new ArrayList<Table>(tablelist.tableHashMap.values());
+
+            Collections.sort(tablesSortedBySize, new Comparator<Table>() {
+                @Override
+                public int compare(Table o1, Table o2) {
+                    Double o1_weight = Double.valueOf(o1.stats.sizeUnCompressed);
+                    Double o2_weight = Double.valueOf(o2.stats.sizeUnCompressed);
+
+                    Integer ret = Double.compare(o1_weight, o2_weight);
+                    return ret;
+                }
+            });
+
+            int rank = 0;
+            Double cumPercentage = 0.0;
+            for (Table table : tablesSortedBySize) {
+                rank++;
+                Double tableSizePercentage = table.stats.sizeUnCompressed * 100 / totalSizeofTables;
+                cumPercentage += tableSizePercentage;
+                table.stats.rank = rank;
+                table.stats.percentile = cumPercentage;
+                //System.out.println("Rank=" + rank + " " + table.schema + "." + table.tableName + " Percentile=" + table.stats.percentile + " Size=" + table.stats.sizeUnCompressed);
+            }
+
         } catch (Exception e) {
             log.error(e.toString());
         }
