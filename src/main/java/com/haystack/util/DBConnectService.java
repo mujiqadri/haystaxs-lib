@@ -22,7 +22,7 @@ public class DBConnectService {
     private static String sqlDirectory;
 
     public enum DBTYPE {
-        GREENPLUM, NETEZZA, TERADATA, HAWQ, POSTGRES
+        GREENPLUM, NETEZZA, REDSHIFT, TERADATA, HAWQ, POSTGRES
     }
 
     DBTYPE dbTYPE;
@@ -34,9 +34,14 @@ public class DBConnectService {
     private String user;
     private String pass;
 
+    //TODO Remove this constructor
     public DBConnectService(DBTYPE dbtype, String sqlDirectory) {
         dbTYPE = dbtype;
         this.sqlDirectory = sqlDirectory;
+    }
+
+    public DBConnectService(DBTYPE dbtype) {
+        dbTYPE = dbtype;
     }
 
     public void setCredentials(Credentials cred) {

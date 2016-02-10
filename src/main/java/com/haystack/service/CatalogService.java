@@ -110,6 +110,17 @@ public class CatalogService {
     public String processWorkload(Integer workloadId) {
         Integer user_id = null;
         try {
+
+            // Fetch Cluster Credentials from GPSD against the WorkloadID
+            // Load this in the TableList
+
+
+            // For Queries select the AdminUser and fetch all the queries against the user
+            // Based on StartDate and EndDate of the Cluster
+
+            // Fucking process the workload now !!
+
+
             // Get Database Name against GPSDId,-> DBName
             String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, B.dbname, C.user_id, C.user_name\n" +
                     "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
@@ -855,7 +866,19 @@ public class CatalogService {
             //======================================================
             // Update  GPSD  with the Header Information for the new Database
             //dbConnect.execNoResultSet("update  haystack.gpsd set noOflines = " + lineNo + " where dbname ='" + gpsdDBName + "';");
-            sqlToExec = String.format("UPDATE %s.gpsd SET nooflines=%d, gpsd_db='%s' WHERE gpsd_id=%d;", searchPath, lineNo, gpsdDBName, gpsdId);
+            sqlToExec = String.format("UPDATE %s.gpsd SET nooflines=%d, gpsd_db='%s' WHERE gpsd_id=%d;", haystackSchema, lineNo, gpsdDBName, gpsdId);
+            dbConnect.execNoResultSet(sqlToExec);
+
+            sqlToExec = "select user_id from " + haystackSchema + ".users where user_name = '" + userName + "';";
+            ResultSet rsUser = dbConnect.execQuery(sqlToExec);
+            rsUser.next();
+
+            //TODO  Check if cluster entry exists for the same dbname,
+            sqlToExec = "INSERT INTO " + haystackSchema + ".cluster(  cluster_id ,cluster_name ,host ,dbname ,port ,password ,username ,\n" +
+                    "  query_refresh_schedule ,created_on ,cluster_type ,user_id ) VALUES (999" + gpsdId + ",'GPSD-" + gpsdId + "-" + gpsdDBName +
+                    "','" + gpsdCred.getHostName() + "','" + gpsdDBName + "'," + gpsdCred.getPort() + ",'" + gpsdCred.getPassword() +
+                    "','" + gpsdCred.getUserName() + "','24hour',now(),'GREENPLUM'," + rsUser.getInt("user_id");
+
             dbConnect.execNoResultSet(sqlToExec);
             dbConnect.close();
             return json_res;
@@ -949,7 +972,5 @@ public class CatalogService {
         }
     }
 
-    public void saveQueries(ArrayList<Query> querylist) {
-        // Save all queries in the Haystack Schema
-    }
+
 }

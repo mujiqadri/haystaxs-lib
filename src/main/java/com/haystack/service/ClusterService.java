@@ -5,9 +5,14 @@ import com.haystack.domain.Query;
 import com.haystack.domain.Table;
 import com.haystack.domain.Tables;
 import com.haystack.parser.util.TablesNamesFinder;
+import com.haystack.service.database.Cluster;
+import com.haystack.service.database.Greenplum;
+import com.haystack.service.database.Netezza;
+import com.haystack.service.database.Redshift;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
+import com.sun.tools.corba.se.idl.constExpr.Times;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,33 +33,32 @@ import java.util.Date;
 */
  public class ClusterService {
 
+
     private String sqlPath;
     private String haystackSchema;
     private Credentials credentials;
     private Properties properties;
 
-    public ArrayList<String> fileQueries = new ArrayList<String>();
 
     static Logger log = LoggerFactory.getLogger(ModelService.class.getName());
     private DBConnectService dbConnect ;
 
-    public ArrayList < Query > querylist = new ArrayList<Query>();
-    public ArrayList<TablesNamesFinder> tblNamesFinderlist = new ArrayList<TablesNamesFinder>();
+    //public ArrayList < Query > querylist = new ArrayList<Query>();
+    //public ArrayList<TablesNamesFinder> tblNamesFinderlist = new ArrayList<TablesNamesFinder>();
 
-
-
-    public ClusterService(ConfigProperties config) throws Exception{
+    public ClusterService(ConfigProperties config) throws Exception {
         try {
             this.properties = config.properties;
             this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
             this.haystackSchema = this.properties.getProperty("main.schema");
-            dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM,sqlPath);
-            this.credentials = config.getUserDataCredentials();
+            dbConnect = new DBConnectService(DBConnectService.DBTYPE.POSTGRES, sqlPath);
+            this.credentials = config.getHaystackDBCredentials();
             dbConnect.connect(credentials);
-        }catch (Exception e){
+        } catch (Exception e) {
             log.error(e.toString());
             throw e;
         }
+
     }
 
     public ClusterService(ConfigProperties config, String dbName) throws Exception {
@@ -63,7 +67,7 @@ import java.util.Date;
             this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
             this.haystackSchema = this.properties.getProperty("main.schema");
             dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, sqlPath);
-            this.credentials = config.getUserDataCredentials();
+            this.credentials = config.getHaystackDBCredentials();
             this.credentials.setDatabase(dbName);
             dbConnect.connect(credentials);
         } catch (Exception e) {
@@ -73,9 +77,102 @@ import java.util.Date;
 
     }
 
+    public Tables getTablesfromCluster() {
+        return new Tables();
+    }
+
+
+    // Refresh method checks the
+    public boolean refresh() {
+
+        String queryRefreshSchedule = "", schemaRefreshSchedule = "";
+        String clusterType;
+        Cluster cluster;
+        Credentials clusterCred; // Credentials for the Cluster we need to connect to
+
+
+        // Fetch cluster details from HayStack Schema
+        try {
+            String sql = "select gpsd_id, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01'), " +
+                    " coalesce(last_schema_refreshed_on,'1900-01-01') ,db_type as cluster_type, now() as current_time  from " + haystackSchema + ".gpsd where host is not null and is_active = true;";
+            ResultSet rs = dbConnect.execQuery(sql);
+            while (rs.next()) {
+
+                Integer clusterId = rs.getInt("gpsd_id");
+                Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
+                Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
+                Timestamp currentTime = rs.getTimestamp("current_time");
+                clusterType = rs.getString("cluster_type");
+
+                clusterCred = getCredentials(rs);
+                // Instantiate Cluster Object based on type
+                switch (clusterType) {
+                    case "GREENPLUM":
+                        cluster = new Greenplum();
+                        break;
+                    case "REDSHIFT":
+                        cluster = new Redshift();
+                        break;
+                    case "NETEZZA":
+                        cluster = new Netezza();
+                        break;
+                    default:
+                        throw new Exception("Cluster Type Invalid");
+                }
+
+                try {
+                    cluster.connect(clusterCred);
+                    Integer queryRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("query.refresh.interval.hours"));
+                    // Add Refresh Interval to Last refresh time and then check
+                    Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
+                    if (newQueryRefreshTime.compareTo(currentTime) < 0) { // if this time is less than current_time, if yes then refresh queries
+                        cluster.loadQueries(clusterId, lastQueryRefreshTime);
+                    }
+
+                    Integer schemaRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("schema.refresh.interval.hours"));
+                    lastSchemaRefreshTime.setTime(lastSchemaRefreshTime.getTime() + (schemaRefreshIntervalHours * 60 * 60 * 1000));
+                    if (lastSchemaRefreshTime.compareTo(currentTime) < 0) {// if this time is less than current_time, if yes then refresh schema
+                        cluster.refreshTableStats(clusterId);
+                    }
+                } catch (Exception e) {
+                    log.error("Error in refreshing cluster gpsd_id= " + clusterId + " Exception=" + e.toString());
+                }
+            }
+            rs.close();
+
+        } catch (Exception e) {
+            log.error("Error in fetching cluster from " + haystackSchema + " schema.");
+            return false;
+        }
+        return true;
+    }
+
+    private Credentials getCredentials(ResultSet rs) {
+        Credentials cred = new Credentials();
+        try {
+            String sHost = rs.getString("host");
+            String dbname = rs.getString("dbname");
+            String username = rs.getString("username");
+            String password = rs.getString("password");
+            Integer port = rs.getInt("port");
+
+            if (sHost.length() == 0 || dbname.length() == 0 || username.length() == 0 || password.length() == 0) {
+                Exception e = new Exception();
+                throw e;
+            }
+            cred.setCredentials(sHost, port.toString(), dbname, username, password);
+        } catch (Exception e) {
+            log.error("Error in getting credentials for cluster: " + e.toString());
+            return null;
+        }
+        return cred;
+    }
+
+
     // Read File with multiple SQL statements, spread across multiple lines, and includes comments
     public void readSQLFile(String filename) {
         try {
+            ArrayList<String> fileQueries = new ArrayList<String>();
 
             String currQuery = "";
             String nextQuery = "";
@@ -128,7 +225,7 @@ import java.util.Date;
     public Tables getTablefromGPDBStats(Integer gpsd_id) {
         Tables tablelist = new Tables();
         try {
-            String jsonTables = tablelist.loadfromStats(dbConnect, false);
+            //String jsonTables = tablelist.loadfromStats(dbConnect, false);
 
             //String sql = "update " + haystackSchema + ".gpsd set json ='" + jsonTables + "' where gpsd_id = " + gpsd_id + ";";
             //dbConnect.execQuery(sql);
@@ -139,126 +236,6 @@ import java.util.Date;
         return tablelist;
     }
 
-    // Get Tables from Cluster along with thier Structure and Stats
-    // This method works when connected to the cluster
-    // this doesnot work when GPSD file is uploaded since this information
-    // should be extracted from the stats - call getTableDetailsfromStats
-    public Tables getTablesfromCluster() {
-        Tables tablelist = new Tables();
-
-        log.info("Populating table properties for Schemas where threshold has passed");
-
-        Integer schemaThreshold = Integer.parseInt(this.properties.getProperty("schema.change.threshold.days"));
-
-        try {
-            // Check if schema.change.threshold has passed from the last run_log timestamp
-
-            String sqlSchemas = "select a.schema_name, B.max_run_date, now()\n" +
-                    "from information_schema.schemata A\n" +
-                    "\n" +
-                    "left outer join \n" +
-                    "\t(\n" +
-                    "\tselect run_schema, max(run_date) as max_run_date\n" +
-                    "\tfrom " + haystackSchema + ".run_log\n" +
-                    "\tgroup by run_schema\n" +
-                    "\t) AS B\n" +
-                    "on A.schema_name = B.run_schema\n" +
-                    "where A.schema_name not in ('pg_toast','pg_bitmapindex','madlib','pg_aoseg','pg_catalog'\n" +
-                    ",'gp_toolkit','information_schema','" + haystackSchema + "')\n" +
-                    "and now() > COALESCE(B.max_run_date, '1900-01-01')::DATE  + INTERVAL '" + schemaThreshold.toString() + " days' ";
-            ResultSet rsSchemas = dbConnect.execQuery(sqlSchemas);
-
-            while (rsSchemas.next()){
-
-                String sRunID = "";
-                String schemaName = rsSchemas.getString("schema_name");
-                Date runDate = rsSchemas.getDate("max_run_date");
-
-                log.info("Processing tables in Schema:" + schemaName);
-
-                String sqlRunStats = "select " + haystackSchema + ".capturetabledetailsgpdb('" + schemaName + "','" + this.properties.getProperty("haystack.ds_cluster.username") + "')";
-                ResultSet rsRes = dbConnect.execQuery(sqlRunStats);
-                while (rsRes.next()) {
-                    sRunID = rsRes.getString(1);
-                }
-                rsRes.close();
-
-                // Now Update SizeOnDisk for all tables in schema
-                String sqlSize = "\t\tselect sotailtablename as tableName, \n" +
-                        "\t\tto_char((sotailtablesizeuncompressed :: FLOAT8 / 1024 / 1024 / 1024),\n" +
-                        "\t\t\t'FM9999999999.0000') as SizeOnDiskU,\n" +
-                        "\t\tto_char((sotailtablesizedisk :: FLOAT8 / 1024 / 1024 / 1024),\n" +
-                        "\t\t\t'FM9999999999.0000') as SizeOnDisk,\n" +
-                        "\t\tto_char((sotailtablesizeuncompressed - sotailtablesizedisk) \n" +
-                        "\t\t\t* 100 / sotailtablesizeuncompressed, 'FM999') as CompressRatio\n" +
-                        "\t\t\t\n" +
-                        "\t\tfrom gp_toolkit.gp_size_of_table_and_indexes_licensing \n" +
-                        "\t\twhere sotailschemaname = '" + schemaName + "'";
-
-                ResultSet rsSize = dbConnect.execQuery(sqlSize);
-                while (rsSize.next()){
-                    String sTableName = rsSize.getString("tableName");
-                    Float sizeOnDiskU = rsSize.getFloat("SizeOnDiskU");
-                    Float sizeOnDisk = rsSize.getFloat("SizeOnDisk");
-                    Float compressRatio = rsSize.getFloat("CompressRatio");
-
-                    String sqlUpdTbl = "update " + haystackSchema + ".tables set sizeInGB = " + sizeOnDisk +
-                            ", sizeInGBU = " + sizeOnDiskU + ", compressRatio = " + compressRatio +
-                            " where schema_name = '" + schemaName + "' and table_name = '" + sTableName + "'" ;
-                    dbConnect.execNoResultSet(sqlUpdTbl);
-                }
-                rsSize.close();
-            }
-            log.info("Schema Processing Complete");
-            rsSchemas.close();
-
-            // Load Tables into Memory
-            tablelist.load(dbConnect);
-
-        }catch(Exception e){
-            log.error("Error while fetching table details from cluster:" + e.toString());
-        }
-        return tablelist;
-    }
-
-    //public void
-    public void getQueriesfromDB() {
-        log.info("Getting Queries from Cluster Log Tables");
-
-        // Load queries into HayStack.gp_queries_log for all queries not in last runlog
-        //dbConnect.execScript("loadQueriesIntoLogTable");
-        try {
-
-            // Load All Queries from HayStack.gp_queries_log into memory and return List<Query> back to processor
-            long slidingWindowDays = Integer.parseInt(properties.getProperty("query.window.days"));
 
 
-            // Fetch all tables from within the current database and schema
-            String sqlQry = String.format(dbConnect.getSQLfromFile("getAllQueries"), haystackSchema);
-
-            PreparedStatement ps = dbConnect.prepareStatement(sqlQry);
-
-            final long ONE_DAY_MILLISCONDS = 25 * 60 * 60 * 1000;
-            Timestamp tenDaysAgo = new Timestamp(System.currentTimeMillis() - ( slidingWindowDays * ONE_DAY_MILLISCONDS));
-
-            ps.setTimestamp(1, tenDaysAgo);
-            ResultSet rs = ps.executeQuery();
-
-            while (rs.next()) {
-                Query query = new Query();
-                query.add(rs.getDate("logtime"), rs.getString("loguser"), rs.getString("logdatabase"), rs.getString("logpid"),
-                        rs.getString("logthread"), rs.getString("loghost"), rs.getString("logsegment"), rs.getString("SQLText"));
-
-                querylist.add(query);
-            }
-            log.info("Done Getting Queries from Cluster Log Tables");
-        } catch (Exception e) {
-            log.error("Error getting queries from Cluster Log" + e.toString());
-
-
-        }
-    }
-    public List<Query> getQueriesfromFile(){
-        return null;
-    }
 }

@@ -7,26 +7,26 @@ import java.util.List;
  * Created by qadrim on 15-11-13.
  */
 public class Partition {
-    String tableName;      // Name of Table on which partition is created
-    String partitionName;  // Name of the partition
-    int level;
-    String type; // range or list
-    int rank;
-    int position;
-    String listValues;
-    String rangeStart;
-    Boolean rangeStartInclusive;
-    String rangeEnd;
-    Boolean rangeEndInclusive;
-    String everyClause;
-    Boolean isDefault;
-    String boundary;
-    HashMap<String, Partition> childPartitions;
-    Integer relTuples;
-    Integer relPages;
-    String parentPartitionTableName;
-    String parentPartitionName;
-    String sizeForDisplay;
+    public String tableName;      // Name of Table on which partition is created
+    public String partitionName;  // Name of the partition
+    public int level;
+    public String type; // range or list
+    public int rank;
+    public int position;
+    public String listValues;
+    public String rangeStart;
+    public Boolean rangeStartInclusive;
+    public String rangeEnd;
+    public Boolean rangeEndInclusive;
+    public String everyClause;
+    public Boolean isDefault;
+    public String boundary;
+    public HashMap<String, Partition> childPartitions;
+    public Integer relTuples;
+    public Integer relPages;
+    public String parentPartitionTableName;
+    public String parentPartitionName;
+    public String sizeForDisplay;
 
     public Partition() {
         childPartitions = new HashMap<String, Partition>();
