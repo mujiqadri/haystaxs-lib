@@ -24,6 +24,6 @@ public class ClusterServiceTest extends TestCase {
 
         ClusterService clusterService = new ClusterService(configProperties);
 
-        clusterService.refresh();
+        clusterService.refresh(5);
     }
 }

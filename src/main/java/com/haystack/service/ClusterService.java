@@ -87,7 +87,7 @@ import java.util.Date;
 
 
     // Refresh method checks the
-    public boolean refresh() {
+    public boolean refresh(Integer clusterId) {
 
         String queryRefreshSchedule = "", schemaRefreshSchedule = "";
         String clusterType;
@@ -98,11 +98,12 @@ import java.util.Date;
         // Fetch cluster details from HayStack Schema
         try {
             String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
-                    " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema + ".gpsd where host is not null and is_active = true;";
+                    " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
+                    ".gpsd where host is not null and is_active = true and gpsd_id = " + clusterId + ";";
             ResultSet rs = dbConnect.execQuery(sql);
             while (rs.next()) {
 
-                Integer clusterId = rs.getInt("gpsd_id");
+                //Integer clusterId = rs.getInt("gpsd_id");
                 Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
                 Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
                 Timestamp currentTime = rs.getTimestamp("current_time");
@@ -140,6 +141,7 @@ import java.util.Date;
                     Boolean connectSuccess = cluster.connect(clusterCred);
                     if (!connectSuccess) { // Set IsActive = false for this gpsd_id, so that we donot try to connect it each time
                         sql = "UPDATE " + haystackSchema + ".gpsd set is_active = false where gpsd_id = " + clusterId + ";";
+                        //TODO Add Notification for User - UserInbox
                         dbConnect.execNoResultSet(sql);
                         continue;
                     }

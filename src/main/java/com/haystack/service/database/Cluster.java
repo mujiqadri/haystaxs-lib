@@ -173,6 +173,60 @@ public abstract class Cluster {
         }
     }
 
+    public void createUserSchemaTables(String userSchema) {
+        // 01. Check User Schema Exists
+        String sql = "select count(*) as count from pg_catalog.pg_namespace where nspname = '" + userSchema + "'";
+
+        try {
+            haystackDBConn.connect(configProperties.getHaystackDBCredentials());
+
+            ResultSet rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create Schema
+                sql = "CREATE SCHEMA " + userSchema + ";";
+                haystackDBConn.execNoResultSet(sql);
+            }
+
+            // 02. Create AST Table
+            sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('ast')";
+            rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create AST Table
+                sql = "CREATE TABLE " + userSchema + ".ast ( ast_id serial , ast_json text, checksum text) WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, OIDS=FALSE )DISTRIBUTED BY (ast_id);";
+                haystackDBConn.execNoResultSet(sql);
+            }
+
+            // 03. Create AST Queries Table
+            sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('ast_queries')";
+            rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create AST Queries Table
+                sql = "CREATE TABLE " + userSchema + ".ast_queries ( ast_queries_id serial , queries_id integer NOT NULL,ast_json text,checksum text,ast_id integer NOT NULL)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
+                        " OIDS=FALSE)DISTRIBUTED BY (queries_id);";
+                haystackDBConn.execNoResultSet(sql);
+            }
+
+            // 04. Create Queries Table
+            sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('queries')";
+            rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create Queries Table
+                sql = "CREATE TABLE " + userSchema + ".queries ( id serial ,logsession text,logcmdcount text, logdatabase text," +
+                        "loguser text,logpid text,logsessiontime timestamp with time zone,logtimemin timestamp with time zone, " +
+                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
+                        " OIDS=FALSE) DISTRIBUTED BY (id) " +
+                        " PARTITION BY RANGE(logsessiontime) ( START (date '1900-01-01') INCLUSIVE END ( date '1900-01-02') EXCLUSIVE\n" +
+                        " EVERY (INTERVAL '1 day'));";
+                haystackDBConn.execNoResultSet(sql);
+
+                //Create query_metadata table
+                sql = "CREATE TABLE " + userSchema + ".query_metadata( type text, value text )WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);";
+                haystackDBConn.execNoResultSet(sql);
+            }
+        } catch (Exception e) {
+            log.error(e.toString());
+        }
+    }
     private void createUserSchemaTables(String userSchema, String tempQueryTable, Integer maxQryLogId) throws Exception {
 
         // 01. Check User Schema Exists
@@ -249,6 +303,8 @@ public abstract class Cluster {
                     haystackDBConn.execNoResultSet(sql);
                 }
 
+                sql = "CREATE TABLE " + userSchema + ".query_metadata( type text, value text )WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);";
+                haystackDBConn.execNoResultSet(sql);
             }
         } catch (Exception e) {
             throw e;
