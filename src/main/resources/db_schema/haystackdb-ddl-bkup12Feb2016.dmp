@@ -1,0 +1,2545 @@
+--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: adnanshussain_at_gmail_dot_com; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA adnanshussain_at_gmail_dot_com;
+
+
+ALTER SCHEMA adnanshussain_at_gmail_dot_com OWNER TO gpadmin;
+
+--
+-- Name: citi; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA citi;
+
+
+ALTER SCHEMA citi OWNER TO gpadmin;
+
+--
+-- Name: doctor; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA doctor;
+
+
+ALTER SCHEMA doctor OWNER TO gpadmin;
+
+--
+-- Name: haystack_ui; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA haystack_ui;
+
+
+ALTER SCHEMA haystack_ui OWNER TO gpadmin;
+
+--
+-- Name: mujtaba_dot_qadri_at_gmail_dot_com; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA mujtaba_dot_qadri_at_gmail_dot_com;
+
+
+ALTER SCHEMA mujtaba_dot_qadri_at_gmail_dot_com OWNER TO gpadmin;
+
+--
+-- Name: old_haystack_muji; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA old_haystack_muji;
+
+
+ALTER SCHEMA old_haystack_muji OWNER TO gpadmin;
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: gpadmin
+--
+
+COMMENT ON SCHEMA public IS 'Standard public schema';
+
+
+--
+-- Name: tpcds_at_gmail_dot_com; Type: SCHEMA; Schema: -; Owner: gpadmin
+--
+
+CREATE SCHEMA tpcds_at_gmail_dot_com;
+
+
+ALTER SCHEMA tpcds_at_gmail_dot_com OWNER TO gpadmin;
+
+--
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: gpadmin
+--
+
+CREATE PROCEDURAL LANGUAGE plpgsql;
+ALTER FUNCTION plpgsql_call_handler() OWNER TO gpadmin;
+ALTER FUNCTION plpgsql_validator(oid) OWNER TO gpadmin;
+
+
+SET search_path = haystack_ui, pg_catalog;
+
+--
+-- Name: create_ast_tables(text, boolean); Type: FUNCTION; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE FUNCTION create_ast_tables(userschema text, recreate boolean) RETURNS void
+    AS $$
+DECLARE
+	    sql TEXT;
+	    ast_exists BOOLEAN;
+	    ast_qry_exists BOOLEAN;
+
+BEGIN
+	IF (reCreate) THEN
+		sql := 'drop table if exists ' || userschema || '.ast;';
+		EXECUTE sql;
+		sql := 'drop table if exists ' || userschema || '.ast_queries;';
+		EXECUTE sql;
+	END IF; 
+	-- CREATE AST TABLE IF IT DOESNT EXIST
+	IF (( select count(*)  from information_schema.tables 
+	where upper(table_schema) = upper(userschema) and upper(table_name) = upper('ast')) <= 0) THEN
+
+		RAISE NOTICE 'AST TABLE DOESNOT EXIST: CREATING TABLE';
+		
+		sql := 'CREATE TABLE ' || userschema || '.ast (
+				  ast_id serial NOT NULL,
+				  ast_json text,
+				  checksum text
+				  
+			)
+			WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, 
+			  OIDS=FALSE
+			)DISTRIBUTED BY (ast_id);';
+		EXECUTE sql;
+	END IF;
+
+	-- CREATE AST_QUERIES TABLE IF IT DOESNT EXIST
+	IF (( select count(*)  from information_schema.tables 
+	where upper(table_schema) = upper(userschema) and upper(table_name) = upper('ast_queries')) <= 0) THEN
+
+		RAISE NOTICE 'AST_QUERIES TABLE DOESNOT EXIST: CREATING TABLE';
+		
+		sql := 'CREATE TABLE ' || userschema || '.ast_queries
+			(
+			  ast_queries_id serial NOT NULL,
+			  queries_id integer NOT NULL,
+			  ast_json text,
+			  checksum text,
+			  ast_id integer NOT NULL
+			)
+			WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, 
+			  OIDS=FALSE
+			)
+			DISTRIBUTED BY (queries_id);';
+		EXECUTE sql;
+	END IF;
+END; -- outer function wrapper
+$$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION haystack_ui.create_ast_tables(userschema text, recreate boolean) OWNER TO gpadmin;
+
+--
+-- Name: create_month_partition(text, text, text); Type: FUNCTION; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE FUNCTION create_month_partition(schema_name text, table_name text, monthpartition_name text) RETURNS boolean
+    AS $_$
+DECLARE
+    mycommand TEXT;
+    monthpartition_exists BOOLEAN;
+
+BEGIN
+	-- Find how many days in the current month
+	-- query to see if the target partition already exists
+
+	SELECT count(*) > 0 INTO monthpartition_exists FROM pg_partitions 
+	WHERE partitionname = monthpartition_name 
+		AND tablename = table_name
+		AND schemaname = schema_name;
+
+	-- if the target partition does not exist create it and return
+
+	IF monthpartition_exists = 't' THEN
+		RAISE INFO 'Month Partition Already Exists';
+		RETURN FALSE;
+	END IF;
+
+	-- if the target partition does not exist create it and return
+	IF monthpartition_exists = 'f' THEN
+
+		mycommand := 'ALTER TABLE ' || schema_name || '.' || table_name || ' ADD PARTITION "' || $3 || '" START (''' || $3 || ' 00:00:00.000'') ' 
+		 || ' INCLUSIVE END (''' || $3 || ' 23:59:59.999'') EXCLUSIVE;';
+		RAISE INFO 'Month partition does not exist.  Creating partition now using [%]', mycommand;
+		EXECUTE mycommand;
+
+	END IF;
+
+	RETURN TRUE;
+
+END;
+
+$_$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION haystack_ui.create_month_partition(schema_name text, table_name text, monthpartition_name text) OWNER TO gpadmin;
+
+--
+-- Name: create_viewext(text, text); Type: FUNCTION; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE FUNCTION create_viewext(userschema text, ext_tblname text) RETURNS void
+    AS $$
+DECLARE
+	    sql TEXT;
+BEGIN -- outer function wrapper
+	SET AUTOCOMMIT = ON;
+
+	sql := 'DROP VIEW IF EXISTS ' || userschema || '.v_' || ext_tblname || ';';
+	EXECUTE sql;
+
+	sql := 'create view ' || userschema || '.v_' || ext_tblname || '
+		as
+		select 
+			logsession,
+			logcmdcount,
+			logdatabase,
+			loguser,
+			logpid,
+			logtime::timestamp with time zone ,
+			logdebug  
+		 from '  || userschema || '.' || ext_tblname || '
+		 where loguser is not null 
+		 and logdebug is not null
+		 and logsession is not null
+		 and logcmdcount is not null
+		 and logdatabase is not null
+		 and logpid is not null
+		 and length(logtime) <= 30;';
+	EXECUTE sql;
+
+	
+END; -- outer function wrapper
+$$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION haystack_ui.create_viewext(userschema text, ext_tblname text) OWNER TO gpadmin;
+
+--
+-- Name: load_querylog(text, text, text, text, integer, integer); Type: FUNCTION; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE FUNCTION load_querylog(haystackschema text, userschema text, qrylogtblname text, ext_tblname text, queryid integer, gpsd_id integer) RETURNS void
+    AS $$
+DECLARE
+	    mycommand TEXT;
+	    v_ExtTable TEXT;
+	    sql TEXT;
+	    tbl_exists BOOLEAN;
+	    result BOOLEAN;
+	    recCount int;
+	    rec     RECORD;
+BEGIN -- outer function wrapper
+	SET AUTOCOMMIT = ON;
+
+
+	sql := 'set search_path = ' || haystackSchema || ',' || userSchema || ', public;';
+	RAISE NOTICE 'Setting Searchpath, SQL:%', sql;
+	EXECUTE sql;
+
+	-- Create View on Top of External Table
+	PERFORM create_ViewExt(userschema , ext_tblname );
+	-- Reset ext_TblName to the view name
+	v_ExtTable := 'v_' || ext_tblname;
+	PERFORM create_ast_tables(userschema , false);
+	-- Create QueryLog Table if it doesn't exist
+	
+	select count(*) > 0 INTO tbl_exists
+	from information_schema.tables 
+	where upper(table_schema) = upper(userSchema) and upper(table_name) = upper(qryLogTblName);
+
+	RAISE NOTICE 'TABLE EXISTS:%', tbl_exists;
+	IF tbl_exists = 'f' THEN
+		RAISE INFO '%.% Doesnot exist, creating table', userSchema, qryLogTblName ;
+		mycommand := 'CREATE TABLE ' || userSchema || '.' || qryLogTblName || '
+				(
+				 id serial,
+				  logsession text,
+				  logcmdcount text,
+				  logdatabase text,
+				  loguser text,
+				  logpid text,
+				  logsessiontime timestamp with time zone,
+				  logtimemin timestamp with time zone,
+				  logtimemax timestamp with time zone,
+				  logduration interval,
+				  sql text,
+				  qrytype text, 
+				  gpsd_id integer
+				)
+				WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, 
+				  OIDS=FALSE
+				)
+				DISTRIBUTED BY (id)
+				PARTITION BY RANGE(logsessiontime) ( START (date ''1900-01-01'') INCLUSIVE END ( date ''1900-01-02'') EXCLUSIVE
+				EVERY (INTERVAL ''1 day''));';
+
+		RAISE INFO 'SQL [%]', mycommand;
+		EXECUTE mycommand;
+	END IF;
+	
+	-- CREATE PARTITION - find the distinct dates from the external table to create partitions	
+        sql := 'SELECT logtime::date FROM ' || userSchema || '.'  || v_ExtTable || ' group by logtime::date';
+        raise notice 'sql %',sql;
+         for rec in execute sql loop
+                 RAISE NOTICE '--> MONTH %', rec.logtime ;
+                 SELECT create_month_partition(lower(userSchema),lower(qryLogTblName),rec.logtime) INTO result;
+                 IF result = 'f' 
+			THEN RAISE NOTICE 'Partition Already Exists';
+			ELSE RAISE NOTICE 'Partition Created';
+                 END IF;
+                 mycommand := 'SELECT COUNT(*) FROM ' || haystackSchema || '.query_log_dates where query_log_id=' || queryID || ' AND log_date = '''|| rec.logtime || ''';';
+                 EXECUTE mycommand INTO recCount;
+                 if (recCount = 0) THEN
+			mycommand := 'INSERT INTO ' || haystackSchema || '.query_log_dates(query_log_id,log_date) values(' || queryID || ',''' || rec.logtime || ''');'; 
+			EXECUTE mycommand;
+			RAISE NOTICE 'Inserted Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
+		 else 
+			RAISE NOTICE 'Found Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
+		 end if;
+         end loop;
+
+
+	-- LOAD Queries calculate duration
+	sql := 'INSERT INTO ' || userSchema || '.' || qryLogTblName || '(logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, gpsd_id)
+		 SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,
+                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql,' || gpsd_id || '
+		FROM  ' || userSchema || '.' || v_ExtTable || ' A
+		WHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL 
+		GROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid
+		HAVING length(min(logdebug)) > 0;';
+	RAISE INFO 'INSERTING QUERIES %.%', userSchema, qryLogTblName;
+	EXECUTE sql;
+	
+	 --Categorizing the queries by type
+
+	sql := 'UPDATE ' || userSchema || '.' || qryLogTblName || ' 
+		SET QRYTYPE = case
+	   	        when upper(sql) like ''%SET%'' THEN ''SET CONFIGURATION''
+			when upper(sql) like ''%SELECT%'' THEN ''SELECT''
+			when upper(sql) like ''%INSERT INTO%'' THEN ''INSERT''
+			when upper(sql) like ''%COMMIT%'' THEN ''COMMIT''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.SEARCH_COUNT%'' THEN ''GPTEXT.SEARCH_COUNT''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.INDEX%'' THEN ''GPTEXT.INDEX''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.INDEX_STATISTICS%'' THEN ''GPTEXT.IDX_STATS''
+			when upper(sql) like ''%DROP TABLE%'' THEN ''DROP TABLE''
+			when upper(sql) like ''%BEGIN WORK%LOCK TABLE%'' THEN ''EXCLUSIVE LOCK''
+			when upper(sql) like ''%CREATE TABLE%'' THEN ''CREATE TABLE''
+			when upper(sql) like ''%DROP TABLE%'' THEN ''DROP TABLE''
+			when upper(sql) like ''%TRUNCATE%'' THEN ''TRUNCATE TABLE''
+			when sql like ''unlisten *'' THEN ''INTERNAL''
+			when upper(sql) like ''%UPDATE%'' THEN ''UPDATE'' 
+			when upper(sql) like ''%CREATE%EXTERNAL%TABLE%'' THEN ''CREATE EXTERNAL TABLE''
+			when upper(sql) like ''%DELETE%FROM%'' THEN ''DELETE''
+			when upper(sql) like ''%BEGIN%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%ROLLBACK%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%SAVEPOINT%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%RELEASE%'' THEN ''TRANSACTION-OPERATION''	
+			when upper(sql) like ''%TRANSACTION%'' THEN  ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%SHOW%'' THEN ''SHOW''		 		 
+			when sql like ''%;%'' THEN ''MULTIPLE SQL STATEMENTS''
+		else ''OTHERS''
+	end;';
+	RAISE INFO 'CATEGORIZING QUERIES %.%', userSchema, qryLogTblName;
+	EXECUTE sql;
+
+	-- Update Query Count and Sum Duration for Each Date for this QueryLogId
+	sql := 'UPDATE ' || haystackSchema || '.query_log_dates
+		set query_count = X.query_count, sum_duration = X.sum_duration
+		FROM (select logsessiontime::date as log_date,count(*) as query_count, EXTRACT(EPOCH FROM sum(logduration)) as sum_duration
+		from ' || userSchema || '.' || qryLogTblName || '
+		group by logsessiontime::date ) as X
+		where query_log_dates.log_date = X.log_date
+		and query_log_id = ' || queryID || ';';
+	RAISE INFO 'UPDATE QUERY_LOG_DATE STATS';
+	EXECUTE sql;
+
+	-- Recreate query_metadata table
+	sql:= 'DROP TABLE IF EXISTS ' || userSchema || '.query_metadata;';
+	EXECUTE sql;
+	 
+	sql := 'CREATE TABLE ' || userSchema || '.query_metadata( type text, value text ) WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);';
+	EXECUTE sql;
+
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''dbname'', logdatabase ' || 
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''username'', loguser ' || 
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''querytype'', qrytype ' ||
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+         RAISE NOTICE 'Complete';
+END; -- outer function wrapper
+$$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION haystack_ui.load_querylog(haystackschema text, userschema text, qrylogtblname text, ext_tblname text, queryid integer, gpsd_id integer) OWNER TO gpadmin;
+
+--
+-- Name: load_querylog_from_cluster(text, text, integer); Type: FUNCTION; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE FUNCTION load_querylog_from_cluster(haystackschema text, userschema text, queryid integer) RETURNS void
+    AS $$
+DECLARE
+	    mycommand TEXT;
+	    sql TEXT;
+	    v_ExtTable TEXT;
+	    tbl_exists BOOLEAN;
+	    result BOOLEAN;
+	    recCount int;
+	    rec     RECORD;
+	    ext_tblname text := '__gp_log_master_ext';
+	    qrylogtblname text := 'queries';
+BEGIN -- outer function wrapper
+	SET AUTOCOMMIT = ON;
+	
+	sql := 'set search_path = ' || haystackSchema || ',' || userSchema || ', public;';
+	RAISE NOTICE 'Setting Searchpath, SQL:%', sql;
+	EXECUTE sql;
+
+	-- Create View on Top of External Table
+	--PERFORM create_ViewExt(userschema , ext_tblname );
+	-- Reset ext_TblName to the view name
+	--v_ExtTable := 'v_' || ext_tblname;
+	RAISE INFO '%.% Creating AST Tables', userSchema, qryLogTblName ;
+
+	PERFORM create_ast_tables(userschema , false);
+	-- Create QueryLog Table if it doesn't exist
+	
+	select count(*) > 0 INTO tbl_exists
+	from information_schema.tables 
+	where upper(table_schema) = upper(userSchema) and upper(table_name) = upper(qryLogTblName);
+
+	RAISE NOTICE 'TABLE EXISTS:%', tbl_exists;
+	IF tbl_exists = 'f' THEN
+		RAISE INFO '%.% Doesnot exist, creating table', userSchema, qryLogTblName ;
+		mycommand := 'CREATE TABLE ' || userSchema || '.' || qryLogTblName || '
+				(
+				  id serial,
+				  logsession text,
+				  logcmdcount text,
+				  logdatabase text,
+				  loguser text,
+				  logpid text,
+				  logsessiontime timestamp with time zone,
+				  logtimemin timestamp with time zone,
+				  logtimemax timestamp with time zone,
+				  logduration interval,
+				  sql text,
+				  qrytype text
+				)
+				WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, 
+				  OIDS=FALSE
+				)
+				DISTRIBUTED BY (id)
+				PARTITION BY RANGE(logsessiontime) ( START (date ''1900-01-01'') INCLUSIVE END ( date ''1900-01-02'') EXCLUSIVE
+				EVERY (INTERVAL ''1 day''));';
+
+		RAISE INFO 'SQL [%]', mycommand;
+		EXECUTE mycommand;
+	END IF;
+	
+	-- CREATE PARTITION - find the distinct dates from the external table to create partitions	
+        sql := 'SELECT logtime::date FROM ' || 'gp_toolkit'  || '.'  || ext_tblname || ' group by logtime::date';
+        raise notice 'sql %',sql;
+         for rec in execute sql loop
+                 RAISE NOTICE '--> MONTH %', rec.logtime ;
+                 SELECT create_month_partition(lower(userSchema),lower(qryLogTblName),rec.logtime) INTO result;
+                 IF result = 'f' 
+			THEN RAISE NOTICE 'Partition Already Exists';
+			ELSE RAISE NOTICE 'Partition Created';
+                 END IF;
+                 mycommand := 'SELECT COUNT(*) FROM ' || haystackSchema || '.query_log_dates where query_log_id=' || queryID || ' AND log_date = '''|| rec.logtime || ''';';
+                 EXECUTE mycommand INTO recCount;
+                 if (recCount = 0) THEN
+			mycommand := 'INSERT INTO ' || haystackSchema || '.query_log_dates(query_log_id,log_date) values(' || queryID || ',''' || rec.logtime || ''');'; 
+			EXECUTE mycommand;
+			RAISE NOTICE 'Inserted Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
+		 else 
+			RAISE NOTICE 'Found Date:% into %.Query_Log_Dates', rec.logtime, haystackSchema;
+		 end if;
+         end loop;
+
+
+	-- LOAD Queries calculate duration
+	sql := 'INSERT INTO ' || userSchema || '.' || qryLogTblName || '(logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql)
+		 SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,
+                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql
+		FROM  ' || 'gp_toolkit' || '.' || ext_tblname || ' A
+		WHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL 
+		GROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid
+		HAVING length(min(logdebug)) > 0;';
+	RAISE INFO 'INSERTING QUERIES %.%', userSchema, qryLogTblName;
+	EXECUTE sql;
+	
+	 --Categorizing the queries by type
+
+	sql := 'UPDATE ' || userSchema || '.' || qryLogTblName || ' 
+		SET QRYTYPE = case
+	   	        when upper(sql) like ''%SET%'' THEN ''SET CONFIGURATION''
+			when upper(sql) like ''%SELECT%'' THEN ''SELECT''
+			when upper(sql) like ''%INSERT INTO%'' THEN ''INSERT''
+			when upper(sql) like ''%COMMIT%'' THEN ''COMMIT''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.SEARCH_COUNT%'' THEN ''GPTEXT.SEARCH_COUNT''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.INDEX%'' THEN ''GPTEXT.INDEX''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.INDEX_STATISTICS%'' THEN ''GPTEXT.IDX_STATS''
+			when upper(sql) like ''%DROP TABLE%'' THEN ''DROP TABLE''
+			when upper(sql) like ''%BEGIN WORK%LOCK TABLE%'' THEN ''EXCLUSIVE LOCK''
+			when upper(sql) like ''%CREATE TABLE%'' THEN ''CREATE TABLE''
+			when upper(sql) like ''%DROP TABLE%'' THEN ''DROP TABLE''
+			when upper(sql) like ''%TRUNCATE%'' THEN ''TRUNCATE TABLE''
+			when sql like ''unlisten *'' THEN ''INTERNAL''
+			when upper(sql) like ''%UPDATE%'' THEN ''UPDATE'' 
+			when upper(sql) like ''%CREATE%EXTERNAL%TABLE%'' THEN ''CREATE EXTERNAL TABLE''
+			when upper(sql) like ''%DELETE%FROM%'' THEN ''DELETE''
+			when upper(sql) like ''%BEGIN%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%ROLLBACK%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%SAVEPOINT%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%RELEASE%'' THEN ''TRANSACTION-OPERATION''	
+			when upper(sql) like ''%TRANSACTION%'' THEN  ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%SHOW%'' THEN ''SHOW''		 		 
+			when sql like ''%;%'' THEN ''MULTIPLE SQL STATEMENTS''
+		else ''OTHERS''
+	end;';
+	RAISE INFO 'CATEGORIZING QUERIES %.%', userSchema, qryLogTblName;
+	EXECUTE sql;
+
+	-- Update Query Count and Sum Duration for Each Date for this QueryLogId
+	sql := 'UPDATE ' || haystackSchema || '.query_log_dates
+		set query_count = X.query_count, sum_duration = X.sum_duration
+		FROM (select logsessiontime::date as log_date,count(*) as query_count, EXTRACT(EPOCH FROM sum(logduration)) as sum_duration
+		from ' || userSchema || '.' || qryLogTblName || '
+		group by logsessiontime::date ) as X
+		where query_log_dates.log_date = X.log_date
+		and query_log_id = ' || queryID || ';';
+	RAISE INFO 'UPDATE QUERY_LOG_DATE STATS';
+	EXECUTE sql;
+
+	-- Recreate query_metadata table
+	sql:= 'DROP TABLE IF EXISTS ' || userSchema || '.query_metadata;';
+	EXECUTE sql;
+	 
+	sql := 'CREATE TABLE ' || userSchema || '.query_metadata( type text, value text ) WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);';
+	EXECUTE sql;
+
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''dbname'', logdatabase ' || 
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''username'', loguser ' || 
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+	
+	sql := 'INSERT INTO ' || userSchema || '.query_metadata ( type, value) SELECT distinct ''querytype'', qrytype ' ||
+		' FROM ' || userSchema || '.queries;';
+	EXECUTE sql;
+         RAISE NOTICE 'Complete';
+
+END; -- outer function wrapper
+$$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION haystack_ui.load_querylog_from_cluster(haystackschema text, userschema text, queryid integer) OWNER TO gpadmin;
+
+SET search_path = old_haystack_muji, pg_catalog;
+
+--
+-- Name: create_month_partition(text, text, text); Type: FUNCTION; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+CREATE FUNCTION create_month_partition(schema_name text, table_name text, monthpartition_name text) RETURNS boolean
+    AS $_$
+DECLARE
+    mycommand TEXT;
+    monthpartition_exists BOOLEAN;
+
+BEGIN
+	-- Find how many days in the current month
+	-- query to see if the target partition already exists
+
+	SELECT count(*) > 0 INTO monthpartition_exists FROM pg_partitions 
+	WHERE partitionname = monthpartition_name 
+		AND tablename = table_name
+		AND schemaname = schema_name;
+
+	-- if the target partition does not exist create it and return
+
+	IF monthpartition_exists = 't' THEN
+		RAISE INFO 'Month Partition Already Exists';
+		RETURN FALSE;
+	END IF;
+
+	-- if the target partition does not exist create it and return
+	IF monthpartition_exists = 'f' THEN
+
+		mycommand := 'ALTER TABLE ' || schema_name || '.' || table_name || ' ADD PARTITION "' || $3 || '" START (''' || $3 || ' 00:00:00.000'') ' 
+		 || ' INCLUSIVE END (''' || $3 || ' 23:59:59.999'') EXCLUSIVE;';
+		RAISE INFO 'Month partition does not exist.  Creating partition now using [%]', mycommand;
+		EXECUTE mycommand;
+
+	END IF;
+
+	RETURN TRUE;
+
+END;
+
+$_$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION old_haystack_muji.create_month_partition(schema_name text, table_name text, monthpartition_name text) OWNER TO gpadmin;
+
+--
+-- Name: load_querylog(text, text, text, integer); Type: FUNCTION; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+CREATE FUNCTION load_querylog(schema text, qrylogtblname text, ext_tblname text, queryid integer) RETURNS void
+    AS $$
+DECLARE
+	    mycommand TEXT;
+	    sql TEXT;
+	    tbl_exists BOOLEAN;
+	    result BOOLEAN;
+	    rec     RECORD;
+BEGIN -- outer function wrapper
+
+	-- Create QueryLog Table if it doesn't exist
+	
+	select count(*) > 0 INTO tbl_exists
+	from information_schema.tables 
+	where upper(table_schema) = upper(schema) and upper(table_name) = upper(qryLogTblName);
+
+	RAISE NOTICE 'TABLE EXISTS:%', tbl_exists;
+	IF tbl_exists = 'f' THEN
+		RAISE INFO '%.% Doesnot exist, creating table', schema, qryLogTblName ;
+		mycommand := 'CREATE TABLE ' || schema || '.' || qryLogTblName || '
+				(
+				  logsession text,
+				  logcmdcount text,
+				  logdatabase text,
+				  loguser text,
+				  logpid text,
+				  logsessiontime timestamp with time zone,
+				  logtimemin timestamp with time zone,
+				  logtimemax timestamp with time zone,
+				  logduration interval,
+				  sql text,
+				  qrytype text
+				)
+				WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, 
+				  OIDS=FALSE
+				)
+				DISTRIBUTED BY (logsession)
+				PARTITION BY RANGE(logsessiontime) ( START (date ''1900-01-01'') INCLUSIVE END ( date ''1900-01-02'') EXCLUSIVE
+				EVERY (INTERVAL ''1 day''));';
+
+		RAISE INFO 'SQL [%]', mycommand;
+		EXECUTE mycommand;
+	END IF;
+	
+	-- CREATE PARTITION - find the distinct dates from the external table to create partitions	
+        sql := 'SELECT logtime::date FROM ' || schema || '.'  || ext_TblName || ' group by logtime::date';
+        raise notice 'sql %',sql;
+         for rec in execute sql loop
+                 RAISE NOTICE '--> MONTH %', rec.logtime ;
+                 SELECT haystack.create_month_partition(lower(schema), lower(qryLogTblName), rec.logtime) INTO result;
+                 IF result = 'f' 
+			THEN RAISE NOTICE 'Partition Already Exists';
+			ELSE RAISE NOTICE 'Partition Created';
+                 END IF;
+		  mycommand := 'INSERT INTO haystack.query_log_dates(querylog_id,logdate) values(' || queryID || ',''' || rec.logtime || ''');'; 
+		 EXECUTE mycommand;
+		 RAISE NOTICE 'Inserted Date:% into Haystack.Query_Log_Dates', rec.logtime;
+         end loop;
+
+
+	-- LOAD Queries calculate duration
+	sql := 'INSERT INTO ' || schema || '.' || qryLogTblName || '(logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql)
+		 SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,
+                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql
+		FROM  ' || schema || '.' || ext_TblName || ' A
+		WHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL 
+		GROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid
+		HAVING length(min(logdebug)) > 0;';
+	RAISE INFO 'INSERTING QUERIES %.%', schema, qryLogTblName;
+	EXECUTE sql;
+	
+	 --Categorizing the queries by type
+
+	sql := 'UPDATE ' || schema || '.' || qryLogTblName || ' 
+		SET QRYTYPE = case
+	   	        when upper(sql) like ''%SET%'' THEN ''SET CONFIGURATION''
+			when upper(sql) like ''%SELECT%'' THEN ''SELECT''
+			when upper(sql) like ''%INSERT INTO%'' THEN ''INSERT''
+			when upper(sql) like ''%COMMIT%'' THEN ''COMMIT''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.SEARCH_COUNT%'' THEN ''GPTEXT.SEARCH_COUNT''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.INDEX%'' THEN ''GPTEXT.INDEX''
+			when upper(sql) like ''%SELECT%FROM%GPTEXT.INDEX_STATISTICS%'' THEN ''GPTEXT.IDX_STATS''
+			when upper(sql) like ''%DROP TABLE%'' THEN ''DROP TABLE''
+			when upper(sql) like ''%BEGIN WORK%LOCK TABLE%'' THEN ''EXCLUSIVE LOCK''
+			when upper(sql) like ''%CREATE TABLE%'' THEN ''CREATE TABLE''
+			when upper(sql) like ''%DROP TABLE%'' THEN ''DROP TABLE''
+			when upper(sql) like ''%TRUNCATE%'' THEN ''TRUNCATE TABLE''
+			when sql like ''unlisten *'' THEN ''INTERNAL''
+			when upper(sql) like ''%UPDATE%'' THEN ''UPDATE'' 
+			when upper(sql) like ''%CREATE%EXTERNAL%TABLE%'' THEN ''CREATE EXTERNAL TABLE''
+			when upper(sql) like ''%DELETE%FROM%'' THEN ''DELETE''
+			when upper(sql) like ''%BEGIN%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%ROLLBACK%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%SAVEPOINT%'' THEN ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%RELEASE%'' THEN ''TRANSACTION-OPERATION''	
+			when upper(sql) like ''%TRANSACTION%'' THEN  ''TRANSACTION-OPERATION''
+			when upper(sql) like ''%SHOW%'' THEN ''SHOW''		 		 
+			when sql like ''%;%'' THEN ''MULTIPLE SQL STATEMENTS''
+		else ''OTHERS''
+	end;';
+	RAISE INFO 'CATEGORIZING QUERIES %.%', schema, qryLogTblName;
+	EXECUTE sql;
+
+         RAISE NOTICE 'Complete';
+
+END; -- outer function wrapper
+$$
+    LANGUAGE plpgsql NO SQL;
+
+
+ALTER FUNCTION old_haystack_muji.load_querylog(schema text, qrylogtblname text, ext_tblname text, queryid integer) OWNER TO gpadmin;
+
+SET search_path = adnanshussain_at_gmail_dot_com, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: ast; Type: TABLE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE ast (
+    ast_id integer NOT NULL,
+    ast_json text,
+    checksum text
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (ast_id);
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.ast OWNER TO gpadmin;
+
+--
+-- Name: ast_ast_id_seq; Type: SEQUENCE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE ast_ast_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.ast_ast_id_seq OWNER TO gpadmin;
+
+--
+-- Name: ast_ast_id_seq; Type: SEQUENCE OWNED BY; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE ast_ast_id_seq OWNED BY ast.ast_id;
+
+
+--
+-- Name: ast_queries; Type: TABLE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE ast_queries (
+    ast_queries_id integer NOT NULL,
+    queries_id integer NOT NULL,
+    ast_json text,
+    checksum text,
+    ast_id integer NOT NULL
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (queries_id);
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.ast_queries OWNER TO gpadmin;
+
+--
+-- Name: ast_queries_ast_queries_id_seq; Type: SEQUENCE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE ast_queries_ast_queries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.ast_queries_ast_queries_id_seq OWNER TO gpadmin;
+
+--
+-- Name: ast_queries_ast_queries_id_seq; Type: SEQUENCE OWNED BY; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE ast_queries_ast_queries_id_seq OWNED BY ast_queries.ast_queries_id;
+
+
+--
+-- Name: queries; Type: TABLE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE queries (
+    id integer NOT NULL,
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logsessiontime timestamp with time zone,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    sql text,
+    qrytype text,
+    gpsd_id integer
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (id) PARTITION BY RANGE(logsessiontime) 
+          (
+          START ('1900-01-01 00:00:00-05'::timestamp with time zone) END ('1900-01-02 00:00:00-05'::timestamp with time zone) EVERY ('1 day'::interval) WITH (tablename='queries_1_prt_1', orientation=row , appendonly=true, compresstype=quicklz )
+          );
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.queries OWNER TO gpadmin;
+
+--
+-- Name: queries_id_seq; Type: SEQUENCE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE queries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.queries_id_seq OWNER TO gpadmin;
+
+--
+-- Name: queries_id_seq; Type: SEQUENCE OWNED BY; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE queries_id_seq OWNED BY queries.id;
+
+
+--
+-- Name: query_metadata; Type: TABLE; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_metadata (
+    type text,
+    value text
+) DISTRIBUTED BY (type);
+
+
+ALTER TABLE adnanshussain_at_gmail_dot_com.query_metadata OWNER TO gpadmin;
+
+SET search_path = citi, pg_catalog;
+
+--
+-- Name: ext_101; Type: EXTERNAL TABLE; Schema: citi; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL WEB TABLE ext_101 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) EXECUTE E'cat /home/citi-gpdblogs/APAC-GPDB-10-27-2015/APAC-gpdb-2015-10-27_000000.csv' ON MASTER 
+ FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE citi.ext_101 OWNER TO gpadmin;
+
+--
+-- Name: ext_102; Type: EXTERNAL TABLE; Schema: citi; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL WEB TABLE ext_102 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) EXECUTE E'cat /home/citi-gpdblogs/APAC-GPDB-10-27-2015/APAC-gpdb-2015-10-26_000000.csv' ON MASTER 
+ FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE citi.ext_102 OWNER TO gpadmin;
+
+--
+-- Name: ext_28oct; Type: EXTERNAL TABLE; Schema: citi; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL WEB TABLE ext_28oct (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) EXECUTE E'cat /home/citi-gpdblogs/APAC-GPDB-10-27-2015/gpdb-2015-10-28_025118.csv' ON MASTER 
+ FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE citi.ext_28oct OWNER TO gpadmin;
+
+--
+-- Name: queries; Type: TABLE; Schema: citi; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE queries (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (logsession);
+
+
+ALTER TABLE citi.queries OWNER TO gpadmin;
+
+--
+-- Name: querylog; Type: TABLE; Schema: citi; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE querylog (
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logsessiontime timestamp with time zone,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    sql text,
+    qrytype text
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (logsession);
+
+
+ALTER TABLE citi.querylog OWNER TO gpadmin;
+
+SET search_path = doctor, pg_catalog;
+
+--
+-- Name: ext_04; Type: EXTERNAL TABLE; Schema: doctor; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_04 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE doctor.ext_04 OWNER TO gpadmin;
+
+--
+-- Name: ext_103; Type: EXTERNAL TABLE; Schema: doctor; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_103 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/5/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE doctor.ext_103 OWNER TO gpadmin;
+
+--
+-- Name: queries; Type: TABLE; Schema: doctor; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE queries (
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logsessiontime timestamp with time zone,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    sql text,
+    qrytype text
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (logsession) PARTITION BY RANGE(logsessiontime) 
+          (
+          START ('1900-01-01 00:00:00-05'::timestamp with time zone) END ('1900-01-02 00:00:00-05'::timestamp with time zone) EVERY ('1 day'::interval) WITH (tablename='queries_1_prt_1', orientation=row, appendonly=true, compresstype=quicklz ), 
+          PARTITION "2015-10-12" START ('2015-10-12 00:00:00-04'::timestamp with time zone) END ('2015-10-12 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-12', appendonly=false ), 
+          PARTITION "2015-10-13" START ('2015-10-13 00:00:00-04'::timestamp with time zone) END ('2015-10-13 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-13', appendonly=false ), 
+          PARTITION "2015-10-14" START ('2015-10-14 00:00:00-04'::timestamp with time zone) END ('2015-10-14 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-14', appendonly=false )
+          );
+
+
+ALTER TABLE doctor.queries OWNER TO gpadmin;
+
+SET search_path = haystack_ui, pg_catalog;
+
+--
+-- Name: gpsd; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE gpsd (
+    gpsd_id integer NOT NULL,
+    dbname text,
+    filename text,
+    gpsd_db text,
+    gpsd_date date,
+    gpsd_params text,
+    gpsd_version text,
+    nooflines bigint DEFAULT 0 NOT NULL,
+    file_submitted_on timestamp without time zone DEFAULT ('now'::text)::timestamp without time zone,
+    status text,
+    created_on timestamp with time zone,
+    host text,
+    username text,
+    port integer DEFAULT 0 NOT NULL,
+    password text,
+    db_type text,
+    last_queries_refreshed_on timestamp with time zone,
+    is_active boolean DEFAULT true NOT NULL,
+    last_schema_refreshed_on timestamp with time zone,
+    friendly_name character varying(128)
+) DISTRIBUTED BY (gpsd_id);
+
+
+ALTER TABLE haystack_ui.gpsd OWNER TO gpadmin;
+
+--
+-- Name: COLUMN gpsd.status; Type: COMMENT; Schema: haystack_ui; Owner: gpadmin
+--
+
+COMMENT ON COLUMN gpsd.status IS 'SUBMITTED
+IN-PROGRESS
+PROCSSED';
+
+
+--
+-- Name: gpsd_stats; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE gpsd_stats (
+    gpsd_id integer,
+    schema_name text,
+    table_name text,
+    size_in_mb integer,
+    no_of_rows bigint,
+    created_on timestamp with time zone
+) DISTRIBUTED BY (gpsd_id);
+
+
+ALTER TABLE haystack_ui.gpsd_stats OWNER TO gpadmin;
+
+--
+-- Name: gpsd_users; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE gpsd_users (
+    gpsd_id integer NOT NULL,
+    user_id integer NOT NULL,
+    is_default boolean DEFAULT false NOT NULL
+) DISTRIBUTED BY (gpsd_id);
+
+
+ALTER TABLE haystack_ui.gpsd_users OWNER TO gpadmin;
+
+--
+-- Name: internal_errors; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE internal_errors (
+    error_type text NOT NULL,
+    error_class text NOT NULL,
+    error_text text NOT NULL,
+    error_exception_msg text NOT NULL,
+    error_context_info text,
+    occured_on timestamp without time zone,
+    user_id integer
+) DISTRIBUTED BY (error_class);
+
+
+ALTER TABLE haystack_ui.internal_errors OWNER TO gpadmin;
+
+--
+-- Name: internal_jobs; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE internal_jobs (
+    internal_job_id integer NOT NULL,
+    submitted_by integer,
+    submitted_on timestamp without time zone,
+    status_text text,
+    completed_on timestamp without time zone,
+    errors_text text,
+    context_id integer,
+    user_notification_sent_on timestamp without time zone
+) DISTRIBUTED BY (internal_job_id);
+
+
+ALTER TABLE haystack_ui.internal_jobs OWNER TO gpadmin;
+
+--
+-- Name: TABLE haystack_ui.internal_jobs ; Type: COMMENT; Schema: haystack_ui; Owner: gpadmin
+--
+
+COMMENT ON TABLE haystack_ui.internal_jobs  IS 'This table will maintain a list of internal jobs for haystack to carry out. 
+
+Values will be for example:
+
+GPSD_SUBMITTED
+GPSD_CREATED
+GPSD_CREATION_ERROR
+
+WORKLOAD_SUBMITTED
+WORKLOAD_PROCESSED
+WORKLOAD_PROCESSING_ERROR';
+
+
+--
+-- Name: COLUMN internal_jobs.submitted_by; Type: COMMENT; Schema: haystack_ui; Owner: gpadmin
+--
+
+COMMENT ON COLUMN internal_jobs.submitted_by IS 'user id of who submitted the job';
+
+
+--
+-- Name: COLUMN internal_jobs.status_text; Type: COMMENT; Schema: haystack_ui; Owner: gpadmin
+--
+
+COMMENT ON COLUMN internal_jobs.status_text IS 'See values in table def';
+
+
+--
+-- Name: COLUMN internal_jobs.errors_text; Type: COMMENT; Schema: haystack_ui; Owner: gpadmin
+--
+
+COMMENT ON COLUMN internal_jobs.errors_text IS 'Information about what errors occured while processing the job';
+
+
+--
+-- Name: COLUMN internal_jobs.context_id; Type: COMMENT; Schema: haystack_ui; Owner: gpadmin
+--
+
+COMMENT ON COLUMN internal_jobs.context_id IS 'gpsd_id OR run_log_id OR [anyother_work_id]';
+
+
+--
+-- Name: query_log_dates; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_log_dates (
+    query_log_id integer,
+    log_date timestamp without time zone,
+    query_count integer,
+    sum_duration integer
+) DISTRIBUTED BY (query_log_id);
+
+
+ALTER TABLE haystack_ui.query_log_dates OWNER TO gpadmin;
+
+--
+-- Name: query_logs; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_logs (
+    query_log_id integer NOT NULL,
+    submitted_on timestamp without time zone,
+    user_id integer,
+    status text,
+    original_file_name text,
+    file_checksum text,
+    created_on timestamp with time zone,
+    gpsd_id integer DEFAULT 0
+) DISTRIBUTED BY (query_log_id);
+
+
+ALTER TABLE haystack_ui.query_logs OWNER TO gpadmin;
+
+--
+-- Name: seq_clusters; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE seq_clusters
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.seq_clusters OWNER TO gpadmin;
+
+--
+-- Name: seq_gpsd; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE seq_gpsd
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.seq_gpsd OWNER TO gpadmin;
+
+--
+-- Name: seq_internal_jobs; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE seq_internal_jobs
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.seq_internal_jobs OWNER TO gpadmin;
+
+--
+-- Name: seq_query_log; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE seq_query_log
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.seq_query_log OWNER TO gpadmin;
+
+--
+-- Name: seq_users; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE seq_users
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.seq_users OWNER TO gpadmin;
+
+--
+-- Name: seq_workload; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE seq_workload
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.seq_workload OWNER TO gpadmin;
+
+--
+-- Name: user_inbox; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE user_inbox (
+    msg_id integer NOT NULL,
+    user_id integer NOT NULL,
+    msg_type text,
+    msg_type_status text,
+    msg_date timestamp without time zone,
+    isread boolean,
+    msg_text text,
+    msg_title text,
+    msg_class text
+) DISTRIBUTED BY (msg_id);
+
+
+ALTER TABLE haystack_ui.user_inbox OWNER TO gpadmin;
+
+--
+-- Name: user_inbox_msg_id_seq; Type: SEQUENCE; Schema: haystack_ui; Owner: gpadmin
+--
+
+CREATE SEQUENCE user_inbox_msg_id_seq
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE haystack_ui.user_inbox_msg_id_seq OWNER TO gpadmin;
+
+--
+-- Name: user_inbox_msg_id_seq; Type: SEQUENCE OWNED BY; Schema: haystack_ui; Owner: gpadmin
+--
+
+ALTER SEQUENCE user_inbox_msg_id_seq OWNED BY user_inbox.msg_id;
+
+
+--
+-- Name: users; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE users (
+    user_id integer NOT NULL,
+    password text,
+    organization text,
+    created_on timestamp without time zone,
+    last_login timestamp without time zone,
+    email_address text NOT NULL,
+    first_name text NOT NULL,
+    reg_requested_on timestamp without time zone,
+    reg_verification_code text,
+    reg_verified boolean,
+    last_name text,
+    user_name text,
+    is_admin boolean
+) DISTRIBUTED BY (email_address);
+
+
+ALTER TABLE haystack_ui.users OWNER TO gpadmin;
+
+--
+-- Name: workloads; Type: TABLE; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE workloads (
+    workload_id integer NOT NULL,
+    gpsd_id integer,
+    start_date date,
+    end_date date,
+    user_id integer,
+    created_on timestamp without time zone,
+    completed_on timestamp without time zone,
+    percent_processed integer
+) DISTRIBUTED BY (workload_id);
+
+
+ALTER TABLE haystack_ui.workloads OWNER TO gpadmin;
+
+SET search_path = mujtaba_dot_qadri_at_gmail_dot_com, pg_catalog;
+
+--
+-- Name: ast; Type: TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE ast (
+    ast_id integer NOT NULL,
+    ast_json text,
+    checksum text
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (ast_id);
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.ast OWNER TO gpadmin;
+
+--
+-- Name: ast_ast_id_seq; Type: SEQUENCE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE ast_ast_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.ast_ast_id_seq OWNER TO gpadmin;
+
+--
+-- Name: ast_ast_id_seq; Type: SEQUENCE OWNED BY; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE ast_ast_id_seq OWNED BY ast.ast_id;
+
+
+--
+-- Name: ast_queries; Type: TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE ast_queries (
+    ast_queries_id integer NOT NULL,
+    queries_id integer NOT NULL,
+    ast_json text,
+    checksum text,
+    ast_id integer NOT NULL
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (queries_id);
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.ast_queries OWNER TO gpadmin;
+
+--
+-- Name: ast_queries_ast_queries_id_seq; Type: SEQUENCE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE ast_queries_ast_queries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.ast_queries_ast_queries_id_seq OWNER TO gpadmin;
+
+--
+-- Name: ast_queries_ast_queries_id_seq; Type: SEQUENCE OWNED BY; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE ast_queries_ast_queries_id_seq OWNED BY ast_queries.ast_queries_id;
+
+
+--
+-- Name: ext_20; Type: EXTERNAL TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_20 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/20/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE mujtaba_dot_qadri_at_gmail_dot_com.ext_20 OWNER TO gpadmin;
+
+--
+-- Name: ext_22; Type: EXTERNAL TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_22 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/22/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE mujtaba_dot_qadri_at_gmail_dot_com.ext_22 OWNER TO gpadmin;
+
+--
+-- Name: ext_23; Type: EXTERNAL TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_23 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/23/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE mujtaba_dot_qadri_at_gmail_dot_com.ext_23 OWNER TO gpadmin;
+
+--
+-- Name: ext_24; Type: EXTERNAL TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_24 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/24/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE mujtaba_dot_qadri_at_gmail_dot_com.ext_24 OWNER TO gpadmin;
+
+--
+-- Name: ext_25; Type: EXTERNAL TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_25 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/25/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE mujtaba_dot_qadri_at_gmail_dot_com.ext_25 OWNER TO gpadmin;
+
+--
+-- Name: ext_27; Type: EXTERNAL TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE EXTERNAL TABLE ext_27 (
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction integer,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos integer,
+    logcontext text,
+    logdebug text,
+    logcursorpos integer,
+    logfunction text,
+    logfile text,
+    logline integer,
+    logstack text
+) LOCATION (
+    'gpfdist://192.168.1.241:8081/mujtaba_dot_qadri_at_gmail_dot_com/querylogs/27/*.csv'
+) FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"')
+ENCODING 'UTF8';
+
+
+ALTER EXTERNAL TABLE mujtaba_dot_qadri_at_gmail_dot_com.ext_27 OWNER TO gpadmin;
+
+--
+-- Name: queries; Type: TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE queries (
+    id integer NOT NULL,
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logsessiontime timestamp with time zone,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    sql text,
+    qrytype text
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (id) PARTITION BY RANGE(logsessiontime) 
+          (
+          START ('1900-01-01 00:00:00-05'::timestamp with time zone) END ('1900-01-02 00:00:00-05'::timestamp with time zone) EVERY ('1 day'::interval) WITH (tablename='queries_1_prt_1', orientation=row, appendonly=true, compresstype=quicklz ), 
+          PARTITION "2015-10-03" START ('2015-10-03 00:00:00-04'::timestamp with time zone) END ('2015-10-03 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-03', appendonly=false ), 
+          PARTITION "2015-10-05" START ('2015-10-05 00:00:00-04'::timestamp with time zone) END ('2015-10-05 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-05', appendonly=false ), 
+          PARTITION "2015-10-07" START ('2015-10-07 00:00:00-04'::timestamp with time zone) END ('2015-10-07 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-07', appendonly=false ), 
+          PARTITION "2015-10-08" START ('2015-10-08 00:00:00-04'::timestamp with time zone) END ('2015-10-08 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-08', appendonly=false ), 
+          PARTITION "2015-10-09" START ('2015-10-09 00:00:00-04'::timestamp with time zone) END ('2015-10-09 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-09', appendonly=false ), 
+          PARTITION "2015-10-10" START ('2015-10-10 00:00:00-04'::timestamp with time zone) END ('2015-10-10 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-10', appendonly=false ), 
+          PARTITION "2015-10-12" START ('2015-10-12 00:00:00-04'::timestamp with time zone) END ('2015-10-12 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-12', appendonly=false ), 
+          PARTITION "2015-10-13" START ('2015-10-13 00:00:00-04'::timestamp with time zone) END ('2015-10-13 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-13', appendonly=false ), 
+          PARTITION "2015-10-18" START ('2015-10-18 00:00:00-04'::timestamp with time zone) END ('2015-10-18 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-18', appendonly=false ), 
+          PARTITION "2015-10-19" START ('2015-10-19 00:00:00-04'::timestamp with time zone) END ('2015-10-19 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-19', appendonly=false ), 
+          PARTITION "2015-10-20" START ('2015-10-20 00:00:00-04'::timestamp with time zone) END ('2015-10-20 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-20', appendonly=false ), 
+          PARTITION "2015-10-21" START ('2015-10-21 00:00:00-04'::timestamp with time zone) END ('2015-10-21 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-21', appendonly=false ), 
+          PARTITION "2015-10-22" START ('2015-10-22 00:00:00-04'::timestamp with time zone) END ('2015-10-22 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-22', appendonly=false ), 
+          PARTITION "2015-10-23" START ('2015-10-23 00:00:00-04'::timestamp with time zone) END ('2015-10-23 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-23', appendonly=false ), 
+          PARTITION "2015-10-24" START ('2015-10-24 00:00:00-04'::timestamp with time zone) END ('2015-10-24 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-24', appendonly=false ), 
+          PARTITION "2015-10-25" START ('2015-10-25 00:00:00-04'::timestamp with time zone) END ('2015-10-25 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-25', appendonly=false ), 
+          PARTITION "2015-10-26" START ('2015-10-26 00:00:00-04'::timestamp with time zone) END ('2015-10-26 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-26', appendonly=false ), 
+          PARTITION "2015-10-27" START ('2015-10-27 00:00:00-04'::timestamp with time zone) END ('2015-10-27 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-27', appendonly=false ), 
+          PARTITION "2015-10-28" START ('2015-10-28 00:00:00-04'::timestamp with time zone) END ('2015-10-28 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-28', appendonly=false ), 
+          PARTITION "2015-10-29" START ('2015-10-29 00:00:00-04'::timestamp with time zone) END ('2015-10-29 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-29', appendonly=false ), 
+          PARTITION "2015-10-30" START ('2015-10-30 00:00:00-04'::timestamp with time zone) END ('2015-10-30 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-30', appendonly=false ), 
+          PARTITION "2015-10-31" START ('2015-10-31 00:00:00-04'::timestamp with time zone) END ('2015-10-31 23:59:59.999-04'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-10-31', appendonly=false ), 
+          PARTITION "2015-11-01" START ('2015-11-01 00:00:00-04'::timestamp with time zone) END ('2015-11-01 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-01', appendonly=false ), 
+          PARTITION "2015-11-02" START ('2015-11-02 00:00:00-05'::timestamp with time zone) END ('2015-11-02 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-02', appendonly=false ), 
+          PARTITION "2015-11-03" START ('2015-11-03 00:00:00-05'::timestamp with time zone) END ('2015-11-03 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-03', appendonly=false ), 
+          PARTITION "2015-11-04" START ('2015-11-04 00:00:00-05'::timestamp with time zone) END ('2015-11-04 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-04', appendonly=false ), 
+          PARTITION "2015-11-06" START ('2015-11-06 00:00:00-05'::timestamp with time zone) END ('2015-11-06 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-06', appendonly=false ), 
+          PARTITION "2015-11-07" START ('2015-11-07 00:00:00-05'::timestamp with time zone) END ('2015-11-07 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-07', appendonly=false ), 
+          PARTITION "2015-11-08" START ('2015-11-08 00:00:00-05'::timestamp with time zone) END ('2015-11-08 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-08', appendonly=false ), 
+          PARTITION "2015-11-12" START ('2015-11-12 00:00:00-05'::timestamp with time zone) END ('2015-11-12 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-12', appendonly=false ), 
+          PARTITION "2015-11-13" START ('2015-11-13 00:00:00-05'::timestamp with time zone) END ('2015-11-13 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-13', appendonly=false ), 
+          PARTITION "2015-11-14" START ('2015-11-14 00:00:00-05'::timestamp with time zone) END ('2015-11-14 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-14', appendonly=false ), 
+          PARTITION "2015-11-15" START ('2015-11-15 00:00:00-05'::timestamp with time zone) END ('2015-11-15 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-15', appendonly=false ), 
+          PARTITION "2015-11-16" START ('2015-11-16 00:00:00-05'::timestamp with time zone) END ('2015-11-16 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-16', appendonly=false ), 
+          PARTITION "2015-11-17" START ('2015-11-17 00:00:00-05'::timestamp with time zone) END ('2015-11-17 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-17', appendonly=false ), 
+          PARTITION "2015-11-18" START ('2015-11-18 00:00:00-05'::timestamp with time zone) END ('2015-11-18 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-18', appendonly=false ), 
+          PARTITION "2015-11-19" START ('2015-11-19 00:00:00-05'::timestamp with time zone) END ('2015-11-19 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-19', appendonly=false ), 
+          PARTITION "2015-11-20" START ('2015-11-20 00:00:00-05'::timestamp with time zone) END ('2015-11-20 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-20', appendonly=false ), 
+          PARTITION "2015-11-21" START ('2015-11-21 00:00:00-05'::timestamp with time zone) END ('2015-11-21 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-21', appendonly=false ), 
+          PARTITION "2015-11-22" START ('2015-11-22 00:00:00-05'::timestamp with time zone) END ('2015-11-22 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-22', appendonly=false ), 
+          PARTITION "2015-11-23" START ('2015-11-23 00:00:00-05'::timestamp with time zone) END ('2015-11-23 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-23', appendonly=false ), 
+          PARTITION "2015-11-24" START ('2015-11-24 00:00:00-05'::timestamp with time zone) END ('2015-11-24 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-24', appendonly=false ), 
+          PARTITION "2015-11-25" START ('2015-11-25 00:00:00-05'::timestamp with time zone) END ('2015-11-25 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-25', appendonly=false ), 
+          PARTITION "2015-11-26" START ('2015-11-26 00:00:00-05'::timestamp with time zone) END ('2015-11-26 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-26', appendonly=false ), 
+          PARTITION "2015-11-27" START ('2015-11-27 00:00:00-05'::timestamp with time zone) END ('2015-11-27 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-27', appendonly=false ), 
+          PARTITION "2015-11-28" START ('2015-11-28 00:00:00-05'::timestamp with time zone) END ('2015-11-28 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-28', appendonly=false ), 
+          PARTITION "2015-11-29" START ('2015-11-29 00:00:00-05'::timestamp with time zone) END ('2015-11-29 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-29', appendonly=false ), 
+          PARTITION "2015-11-30" START ('2015-11-30 00:00:00-05'::timestamp with time zone) END ('2015-11-30 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-11-30', appendonly=false ), 
+          PARTITION "2015-12-02" START ('2015-12-02 00:00:00-05'::timestamp with time zone) END ('2015-12-02 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-02', appendonly=false ), 
+          PARTITION "2015-12-04" START ('2015-12-04 00:00:00-05'::timestamp with time zone) END ('2015-12-04 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-04', appendonly=false ), 
+          PARTITION "2015-12-07" START ('2015-12-07 00:00:00-05'::timestamp with time zone) END ('2015-12-07 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-07', appendonly=false ), 
+          PARTITION "2015-12-08" START ('2015-12-08 00:00:00-05'::timestamp with time zone) END ('2015-12-08 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-08', appendonly=false ), 
+          PARTITION "2015-12-09" START ('2015-12-09 00:00:00-05'::timestamp with time zone) END ('2015-12-09 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-09', appendonly=false ), 
+          PARTITION "2015-12-10" START ('2015-12-10 00:00:00-05'::timestamp with time zone) END ('2015-12-10 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-10', appendonly=false ), 
+          PARTITION "2015-12-11" START ('2015-12-11 00:00:00-05'::timestamp with time zone) END ('2015-12-11 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-11', appendonly=false ), 
+          PARTITION "2015-12-12" START ('2015-12-12 00:00:00-05'::timestamp with time zone) END ('2015-12-12 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-12', appendonly=false ), 
+          PARTITION "2015-12-13" START ('2015-12-13 00:00:00-05'::timestamp with time zone) END ('2015-12-13 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-13', appendonly=false ), 
+          PARTITION "2015-12-14" START ('2015-12-14 00:00:00-05'::timestamp with time zone) END ('2015-12-14 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-14', appendonly=false ), 
+          PARTITION "2015-12-15" START ('2015-12-15 00:00:00-05'::timestamp with time zone) END ('2015-12-15 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-15', appendonly=false ), 
+          PARTITION "2015-12-16" START ('2015-12-16 00:00:00-05'::timestamp with time zone) END ('2015-12-16 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-16', appendonly=false ), 
+          PARTITION "2015-12-17" START ('2015-12-17 00:00:00-05'::timestamp with time zone) END ('2015-12-17 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-17', appendonly=false ), 
+          PARTITION "2015-12-18" START ('2015-12-18 00:00:00-05'::timestamp with time zone) END ('2015-12-18 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-18', appendonly=false ), 
+          PARTITION "2015-12-19" START ('2015-12-19 00:00:00-05'::timestamp with time zone) END ('2015-12-19 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-19', appendonly=false ), 
+          PARTITION "2015-12-20" START ('2015-12-20 00:00:00-05'::timestamp with time zone) END ('2015-12-20 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-20', appendonly=false ), 
+          PARTITION "2015-12-21" START ('2015-12-21 00:00:00-05'::timestamp with time zone) END ('2015-12-21 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-21', appendonly=false ), 
+          PARTITION "2015-12-22" START ('2015-12-22 00:00:00-05'::timestamp with time zone) END ('2015-12-22 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-22', appendonly=false ), 
+          PARTITION "2015-12-23" START ('2015-12-23 00:00:00-05'::timestamp with time zone) END ('2015-12-23 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-23', appendonly=false ), 
+          PARTITION "2015-12-24" START ('2015-12-24 00:00:00-05'::timestamp with time zone) END ('2015-12-24 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-24', appendonly=false ), 
+          PARTITION "2015-12-25" START ('2015-12-25 00:00:00-05'::timestamp with time zone) END ('2015-12-25 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-25', appendonly=false ), 
+          PARTITION "2015-12-26" START ('2015-12-26 00:00:00-05'::timestamp with time zone) END ('2015-12-26 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-26', appendonly=false ), 
+          PARTITION "2015-12-27" START ('2015-12-27 00:00:00-05'::timestamp with time zone) END ('2015-12-27 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-27', appendonly=false ), 
+          PARTITION "2015-12-28" START ('2015-12-28 00:00:00-05'::timestamp with time zone) END ('2015-12-28 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-28', appendonly=false ), 
+          PARTITION "2015-12-31" START ('2015-12-31 00:00:00-05'::timestamp with time zone) END ('2015-12-31 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2015-12-31', appendonly=false ), 
+          PARTITION "2016-01-01" START ('2016-01-01 00:00:00-05'::timestamp with time zone) END ('2016-01-01 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-01', appendonly=false ), 
+          PARTITION "2016-01-02" START ('2016-01-02 00:00:00-05'::timestamp with time zone) END ('2016-01-02 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-02', appendonly=false ), 
+          PARTITION "2016-01-03" START ('2016-01-03 00:00:00-05'::timestamp with time zone) END ('2016-01-03 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-03', appendonly=false ), 
+          PARTITION "2016-01-04" START ('2016-01-04 00:00:00-05'::timestamp with time zone) END ('2016-01-04 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-04', appendonly=false ), 
+          PARTITION "2016-01-05" START ('2016-01-05 00:00:00-05'::timestamp with time zone) END ('2016-01-05 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-05', appendonly=false ), 
+          PARTITION "2016-01-06" START ('2016-01-06 00:00:00-05'::timestamp with time zone) END ('2016-01-06 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-06', appendonly=false ), 
+          PARTITION "2016-01-07" START ('2016-01-07 00:00:00-05'::timestamp with time zone) END ('2016-01-07 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-07', appendonly=false ), 
+          PARTITION "2016-01-08" START ('2016-01-08 00:00:00-05'::timestamp with time zone) END ('2016-01-08 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-08', appendonly=false ), 
+          PARTITION "2016-01-09" START ('2016-01-09 00:00:00-05'::timestamp with time zone) END ('2016-01-09 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-09', appendonly=false ), 
+          PARTITION "2016-01-10" START ('2016-01-10 00:00:00-05'::timestamp with time zone) END ('2016-01-10 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-10', appendonly=false ), 
+          PARTITION "2016-01-11" START ('2016-01-11 00:00:00-05'::timestamp with time zone) END ('2016-01-11 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-11', appendonly=false ), 
+          PARTITION "2016-01-12" START ('2016-01-12 00:00:00-05'::timestamp with time zone) END ('2016-01-12 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-12', appendonly=false ), 
+          PARTITION "2016-01-13" START ('2016-01-13 00:00:00-05'::timestamp with time zone) END ('2016-01-13 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-13', appendonly=false ), 
+          PARTITION "2016-01-14" START ('2016-01-14 00:00:00-05'::timestamp with time zone) END ('2016-01-14 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-14', appendonly=false ), 
+          PARTITION "2016-01-15" START ('2016-01-15 00:00:00-05'::timestamp with time zone) END ('2016-01-15 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-01-15', appendonly=false )
+          );
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.queries OWNER TO gpadmin;
+
+--
+-- Name: queries_id_seq; Type: SEQUENCE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE queries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.queries_id_seq OWNER TO gpadmin;
+
+--
+-- Name: queries_id_seq; Type: SEQUENCE OWNED BY; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE queries_id_seq OWNED BY queries.id;
+
+
+--
+-- Name: query_metadata; Type: TABLE; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_metadata (
+    type text,
+    value text
+) DISTRIBUTED BY (type);
+
+
+ALTER TABLE mujtaba_dot_qadri_at_gmail_dot_com.query_metadata OWNER TO gpadmin;
+
+SET search_path = old_haystack_muji, pg_catalog;
+
+--
+-- Name: columns; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE columns (
+    runid integer NOT NULL,
+    table_oid integer NOT NULL,
+    column_name text,
+    ordinal_position integer NOT NULL,
+    data_type text,
+    isdk boolean,
+    character_maximum_length integer,
+    numeric_precision integer,
+    numeric_precision_radix integer,
+    numeric_scale integer
+) DISTRIBUTED BY (table_oid ,ordinal_position ,runid);
+
+
+ALTER TABLE old_haystack_muji.columns OWNER TO gpadmin;
+
+--
+-- Name: dbconnections; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE dbconnections (
+    name text NOT NULL,
+    run_id integer NOT NULL,
+    host text,
+    port integer,
+    databasename text,
+    username text,
+    password text
+) DISTRIBUTED BY (name ,run_id);
+
+
+ALTER TABLE old_haystack_muji.dbconnections OWNER TO gpadmin;
+
+--
+-- Name: gpsd; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE gpsd (
+    userid text,
+    dbname text,
+    seqkey integer,
+    filename text,
+    gpsd_db text,
+    gpsd_date date,
+    gpsd_params text,
+    gpsd_version text,
+    nooflines bigint,
+    gpsd_id integer
+) DISTRIBUTED BY (userid);
+
+
+ALTER TABLE old_haystack_muji.gpsd OWNER TO gpadmin;
+
+--
+-- Name: query_log; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_log (
+    run_id integer,
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    sqltext text
+) DISTRIBUTED BY (run_id);
+
+
+ALTER TABLE old_haystack_muji.query_log OWNER TO gpadmin;
+
+--
+-- Name: query_log_dates; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_log_dates (
+    querylog_id integer,
+    logdate timestamp without time zone
+) DISTRIBUTED BY (querylog_id);
+
+
+ALTER TABLE old_haystack_muji.query_log_dates OWNER TO gpadmin;
+
+--
+-- Name: run_log; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE run_log (
+    run_id integer NOT NULL,
+    run_date timestamp without time zone,
+    run_user text,
+    run_db text,
+    model_json text,
+    gpsd_id integer
+) DISTRIBUTED BY (run_id);
+
+
+ALTER TABLE old_haystack_muji.run_log OWNER TO gpadmin;
+
+--
+-- Name: tables; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE tables (
+    runid integer NOT NULL,
+    table_oid integer NOT NULL,
+    db_name text,
+    schema_name text,
+    table_name text,
+    storage_mode text,
+    noofcols integer,
+    iscolumnar text,
+    noofrows bigint,
+    sizeingb double precision,
+    sizeingbu double precision,
+    compresstype text,
+    compresslevel integer,
+    compressratio integer,
+    skew double precision,
+    score double precision,
+    dkarray text
+) DISTRIBUTED BY (table_oid ,runid);
+
+
+ALTER TABLE old_haystack_muji.tables OWNER TO gpadmin;
+
+--
+-- Name: tmpqueries; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE tmpqueries (
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    min text
+) DISTRIBUTED BY (logsession);
+
+
+ALTER TABLE old_haystack_muji.tmpqueries OWNER TO gpadmin;
+
+--
+-- Name: users; Type: TABLE; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE users (
+    userid text NOT NULL,
+    password text,
+    organization text,
+    createdate timestamp without time zone,
+    lastlogin timestamp without time zone
+) DISTRIBUTED BY (userid);
+
+
+ALTER TABLE old_haystack_muji.users OWNER TO gpadmin;
+
+SET search_path = tpcds_at_gmail_dot_com, pg_catalog;
+
+--
+-- Name: ast; Type: TABLE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE ast (
+    ast_id integer NOT NULL,
+    ast_json text,
+    checksum text,
+    count integer DEFAULT 0,
+    total_duration integer DEFAULT 0
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (ast_id);
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.ast OWNER TO gpadmin;
+
+--
+-- Name: ast_ast_id_seq; Type: SEQUENCE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE ast_ast_id_seq
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.ast_ast_id_seq OWNER TO gpadmin;
+
+--
+-- Name: ast_ast_id_seq; Type: SEQUENCE OWNED BY; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE ast_ast_id_seq OWNED BY ast.ast_id;
+
+
+--
+-- Name: ast_queries; Type: TABLE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE ast_queries (
+    ast_queries_id integer NOT NULL,
+    queries_id integer NOT NULL,
+    ast_json text,
+    checksum text,
+    ast_id integer NOT NULL
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (queries_id);
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.ast_queries OWNER TO gpadmin;
+
+--
+-- Name: ast_queries_ast_queries_id_seq; Type: SEQUENCE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE ast_queries_ast_queries_id_seq
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.ast_queries_ast_queries_id_seq OWNER TO gpadmin;
+
+--
+-- Name: ast_queries_ast_queries_id_seq; Type: SEQUENCE OWNED BY; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE ast_queries_ast_queries_id_seq OWNED BY ast_queries.ast_queries_id;
+
+
+--
+-- Name: queries; Type: TABLE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE queries (
+    id integer NOT NULL,
+    logsession text,
+    logcmdcount text,
+    logdatabase text,
+    loguser text,
+    logpid text,
+    logsessiontime timestamp with time zone,
+    logtimemin timestamp with time zone,
+    logtimemax timestamp with time zone,
+    logduration interval,
+    sql text,
+    qrytype text,
+    gpsd_id integer DEFAULT 0
+)
+WITH (appendonly=true, compresstype=quicklz) DISTRIBUTED BY (id) PARTITION BY RANGE(logsessiontime) 
+          (
+          START ('1900-01-01 00:00:00-05'::timestamp with time zone) END ('1900-01-02 00:00:00-05'::timestamp with time zone) EVERY ('1 day'::interval) WITH (tablename='queries_1_prt_1', orientation=row , appendonly=true, compresstype=quicklz ), 
+          PARTITION "2016-02-03" START ('2016-02-03 00:00:00-05'::timestamp with time zone) END ('2016-02-03 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-02-03', appendonly=false ), 
+          PARTITION "2016-02-04" START ('2016-02-04 00:00:00-05'::timestamp with time zone) END ('2016-02-04 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-02-04', appendonly=false ), 
+          PARTITION "2016-02-05" START ('2016-02-05 00:00:00-05'::timestamp with time zone) END ('2016-02-05 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-02-05', appendonly=false ), 
+          PARTITION "2016-02-09" START ('2016-02-09 00:00:00-05'::timestamp with time zone) END ('2016-02-09 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-02-09', appendonly=false ), 
+          PARTITION "2016-02-10" START ('2016-02-10 00:00:00-05'::timestamp with time zone) END ('2016-02-10 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-02-10', appendonly=false ), 
+          PARTITION "2016-02-11" START ('2016-02-11 00:00:00-05'::timestamp with time zone) END ('2016-02-11 23:59:59.999-05'::timestamp with time zone) WITH (tablename='queries_1_prt_2016-02-11', appendonly=false )
+          );
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.queries OWNER TO gpadmin;
+
+--
+-- Name: queries_id_seq; Type: SEQUENCE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+CREATE SEQUENCE queries_id_seq
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.queries_id_seq OWNER TO gpadmin;
+
+--
+-- Name: queries_id_seq; Type: SEQUENCE OWNED BY; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER SEQUENCE queries_id_seq OWNED BY queries.id;
+
+
+--
+-- Name: query_metadata; Type: TABLE; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin; Tablespace: 
+--
+
+CREATE TABLE query_metadata (
+    type text,
+    value text
+) DISTRIBUTED BY (type);
+
+
+ALTER TABLE tpcds_at_gmail_dot_com.query_metadata OWNER TO gpadmin;
+
+SET search_path = adnanshussain_at_gmail_dot_com, pg_catalog;
+
+--
+-- Name: ast_id; Type: DEFAULT; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE ast ALTER COLUMN ast_id SET DEFAULT nextval('ast_ast_id_seq'::regclass);
+
+
+--
+-- Name: ast_queries_id; Type: DEFAULT; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE ast_queries ALTER COLUMN ast_queries_id SET DEFAULT nextval('ast_queries_ast_queries_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: adnanshussain_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE queries ALTER COLUMN id SET DEFAULT nextval('queries_id_seq'::regclass);
+
+
+SET search_path = haystack_ui, pg_catalog;
+
+--
+-- Name: msg_id; Type: DEFAULT; Schema: haystack_ui; Owner: gpadmin
+--
+
+ALTER TABLE user_inbox ALTER COLUMN msg_id SET DEFAULT nextval('user_inbox_msg_id_seq'::regclass);
+
+
+SET search_path = mujtaba_dot_qadri_at_gmail_dot_com, pg_catalog;
+
+--
+-- Name: ast_id; Type: DEFAULT; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE ast ALTER COLUMN ast_id SET DEFAULT nextval('ast_ast_id_seq'::regclass);
+
+
+--
+-- Name: ast_queries_id; Type: DEFAULT; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE ast_queries ALTER COLUMN ast_queries_id SET DEFAULT nextval('ast_queries_ast_queries_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: mujtaba_dot_qadri_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE queries ALTER COLUMN id SET DEFAULT nextval('queries_id_seq'::regclass);
+
+
+SET search_path = tpcds_at_gmail_dot_com, pg_catalog;
+
+--
+-- Name: ast_id; Type: DEFAULT; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE ast ALTER COLUMN ast_id SET DEFAULT nextval('ast_ast_id_seq'::regclass);
+
+
+--
+-- Name: ast_queries_id; Type: DEFAULT; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE ast_queries ALTER COLUMN ast_queries_id SET DEFAULT nextval('ast_queries_ast_queries_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: tpcds_at_gmail_dot_com; Owner: gpadmin
+--
+
+ALTER TABLE queries ALTER COLUMN id SET DEFAULT nextval('queries_id_seq'::regclass);
+
+
+SET search_path = haystack_ui, pg_catalog;
+
+--
+-- Name: cluster_users_pkey; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY gpsd_users
+    ADD CONSTRAINT cluster_users_pkey PRIMARY KEY (gpsd_id, user_id);
+
+
+--
+-- Name: pk_gpsd; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY gpsd
+    ADD CONSTRAINT pk_gpsd PRIMARY KEY (gpsd_id);
+
+
+--
+-- Name: pk_internal_jobs; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY internal_jobs
+    ADD CONSTRAINT pk_internal_jobs PRIMARY KEY (internal_job_id);
+
+
+--
+-- Name: pk_query_log; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY query_logs
+    ADD CONSTRAINT pk_query_log PRIMARY KEY (query_log_id);
+
+
+--
+-- Name: pk_workloads; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY workloads
+    ADD CONSTRAINT pk_workloads PRIMARY KEY (workload_id);
+
+
+--
+-- Name: uk_users_email; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY users
+    ADD CONSTRAINT uk_users_email UNIQUE (email_address);
+
+
+--
+-- Name: user_inbox_pkey; Type: CONSTRAINT; Schema: haystack_ui; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY user_inbox
+    ADD CONSTRAINT user_inbox_pkey PRIMARY KEY (msg_id);
+
+
+SET search_path = old_haystack_muji, pg_catalog;
+
+--
+-- Name: columns_pkey; Type: CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY columns
+    ADD CONSTRAINT columns_pkey PRIMARY KEY (table_oid, ordinal_position, runid);
+
+
+--
+-- Name: dbconnections_pkey; Type: CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY dbconnections
+    ADD CONSTRAINT dbconnections_pkey PRIMARY KEY (name, run_id);
+
+
+--
+-- Name: run_log_pkey; Type: CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY run_log
+    ADD CONSTRAINT run_log_pkey PRIMARY KEY (run_id);
+
+
+--
+-- Name: tables_pkey; Type: CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY tables
+    ADD CONSTRAINT tables_pkey PRIMARY KEY (table_oid, runid);
+
+
+--
+-- Name: user_pkey; Type: CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin; Tablespace: 
+--
+
+ALTER TABLE ONLY users
+    ADD CONSTRAINT user_pkey PRIMARY KEY (userid);
+
+
+--
+-- Name: columns_fkey; Type: FK CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+ALTER TABLE ONLY columns
+    ADD CONSTRAINT columns_fkey FOREIGN KEY (table_oid, runid) REFERENCES tables(table_oid, runid);
+
+
+--
+-- Name: dbconnections_run_id_fkey; Type: FK CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+ALTER TABLE ONLY dbconnections
+    ADD CONSTRAINT dbconnections_run_id_fkey FOREIGN KEY (run_id) REFERENCES run_log(run_id);
+
+
+--
+-- Name: query_log_run_id_fkey; Type: FK CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+ALTER TABLE ONLY query_log
+    ADD CONSTRAINT query_log_run_id_fkey FOREIGN KEY (run_id) REFERENCES run_log(run_id);
+
+
+--
+-- Name: run_log_run_user_fkey; Type: FK CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+ALTER TABLE ONLY run_log
+    ADD CONSTRAINT run_log_run_user_fkey FOREIGN KEY (run_user) REFERENCES users(userid);
+
+
+--
+-- Name: tables_runid_fkey; Type: FK CONSTRAINT; Schema: old_haystack_muji; Owner: gpadmin
+--
+
+ALTER TABLE ONLY tables
+    ADD CONSTRAINT tables_runid_fkey FOREIGN KEY (runid) REFERENCES run_log(run_id);
+
+
+--
+-- Name: public; Type: ACL; Schema: -; Owner: gpadmin
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM gpadmin;
+GRANT ALL ON SCHEMA public TO gpadmin;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+
+--
+-- Greenplum Database database dump complete
+--
+
