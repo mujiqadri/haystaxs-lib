@@ -72,8 +72,8 @@ public class CatalogService {
 
             rs.close();
 
-            ClusterService clusterService = new ClusterService(this.configProperties, gpsd_db);
-            Tables tablelist = clusterService.getTablefromGPDBStats(gpsd_id);
+            ClusterService clusterService = new ClusterService(this.configProperties);
+            Tables tablelist = clusterService.getTables(gpsd_id);
 
             saveGpsdStats(gpsd_id, tablelist);
             json = tablelist.getJSON();
@@ -132,14 +132,15 @@ public class CatalogService {
 
             String gpsd_db = rs.getString("gpsd_db");
             String dbname = rs.getString("dbname");
+
             Integer gpsd_id = rs.getInt("gpsd_id");
             user_id = rs.getInt("user_id");
             Date startDate = rs.getDate("start_date");
             Date endDate = rs.getDate("end_date");
             String schemaName = rs.getString("user_name");
 
-            ClusterService clusterService = new ClusterService(this.configProperties, gpsd_db);
-            Tables tablelist = clusterService.getTablefromGPDBStats(gpsd_id);
+            ClusterService clusterService = new ClusterService(this.configProperties);
+            Tables tablelist = clusterService.getTables(gpsd_id);
 
             ModelService ms = new ModelService();
 
@@ -236,7 +237,7 @@ public class CatalogService {
                         try {
                             String jsonAST = ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
                             if (jsonAST.length() > 0) {
-                                //persistAST(schemaName, queryId, jsonAST);
+                                persistAST(schemaName, queryId, jsonAST);
                             }
                         } catch (Exception e) {
                             log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
@@ -859,8 +860,8 @@ public class CatalogService {
                     }
                 }
             }
-            ClusterService clusterService = new ClusterService(this.configProperties, gpsdDBName);
-            Tables tablelist = clusterService.getTablefromGPDBStats(gpsdId);
+            ClusterService clusterService = new ClusterService(this.configProperties);
+            Tables tablelist = clusterService.getTables(gpsdId);
             String json_res = tablelist.getJSON();
             dbConnGPSD.close();
             //======================================================

@@ -4,6 +4,7 @@ import com.haystack.domain.*;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
 
+import javax.swing.text.StyledEditorKit;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.util.Date;
@@ -19,13 +20,24 @@ public class Greenplum extends Cluster {
         this.dbtype = DBConnectService.DBTYPE.GREENPLUM;
     }
 
+/*
+    @Override
+    public Tables loadTables(Credentials credentials, Boolean isGPSD) {
+        if (isGPSD){
+            return loadTablesfromStats(credentials);
+        } else {
+            return loadTablesfromCatalog(credentials);
+        }
+    }
+*/
     // Get Tables from Cluster along with thier Structure and Stats
     // This method works when connected to the cluster
     // this doesnot work when GPSD file is uploaded since this information
     // should be extracted from the stats - call getTableDetailsfromStats
 
 
-    public String loadTablesfromCatalog(boolean returnJson) {
+    @Deprecated
+    public Tables loadTablesfromCatalog(Credentials credentials) {
 
         Tables tablelist = new Tables();
 
@@ -34,6 +46,8 @@ public class Greenplum extends Cluster {
         Integer schemaThreshold = Integer.parseInt(this.configProperties.properties.getProperty("schema.change.threshold.days"));
 
         try {
+            dbConn = new DBConnectService(this.dbtype);
+            dbConn.connect(credentials);
             // Check if schema.change.threshold has passed from the last run_log timestamp
 
             String sqlSchemas = "select a.schema_name, B.max_run_date, now()\n" +
@@ -101,14 +115,19 @@ public class Greenplum extends Cluster {
         } catch (Exception e) {
             log.error("Error while fetching table details from cluster:" + e.toString());
         }
-        return null;
+        return tablelist;
     }
 
-
     @Override
-    public String loadTables(boolean return_Json) {
+    public Tables loadTables(Credentials credentials, Boolean isGPSD) {
+
+        Tables tables = new Tables();
+
         String jsonResult = "";
         try {
+            dbConn = new DBConnectService(this.dbtype);
+            dbConn.connect(credentials);
+
             String sqlTbl = "\t\tSELECT tbl.oid as table_oid, sch.nspname as schema_name, relname as table_name,\n" +
                     // Changed Muji 23Jan 2016 :tbl.reltuples::bigint
                     //"\t\t  to_char(tbl.reltuples::numeric,'9999999999999999D99') as NoOfRows,\n" +
@@ -261,17 +280,13 @@ public class Greenplum extends Cluster {
                 rsCol.close();
                 String key = tbl.schema + ":" + tbl.tableName;
                 tbl.setDistributionKey();
-                tableHashMap.put(key, tbl);
+                tables.tableHashMap.put(key, tbl);
             }
             rsTbl.close();
-
-            if (return_Json) {
-                jsonResult = getJSON();
-            }
         } catch (Exception e) {
             log.error("Error in loading tables from Stats" + e.toString());
         }
-        return jsonResult;
+        return tables;
     }
 
 
@@ -287,13 +302,15 @@ public class Greenplum extends Cluster {
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
                     "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL and logsessiontime > '" + lastRefreshTime + "' " +
                     "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid\n" +
-                    "\t\tHAVING length(min(logdebug)) > 0;';";
+                    "\t\tHAVING length(min(logdebug)) > 0;";
             ResultSet rs = dbConn.execQuery(sql);
 
             // Create a new connection to Haystack Database, recreate a temp table using gpsd_id and load queries into that table
 
-
             String tmpTblName = "public.tmp_queries_gpsd_id_" + clusterId;
+
+            //TODO Commented for Debuging
+            //
             sql = "DROP TABLE IF EXISTS " + tmpTblName + ";";
             haystackDBConn.execNoResultSet(sql);
 
@@ -311,16 +328,28 @@ public class Greenplum extends Cluster {
             haystackDBConn.execNoResultSet(sql);
 
             while (rs.next()) {
+                // Escape Quote in SQL Statement
+                String logdebug = rs.getString(10);
+                String escapedQuery = logdebug.replace("'", "\\'");
+
                 sql = String.format("INSERT INTO %s ( logsession, logcmdcount, logdatabase, loguser, logpid, logsessiontime,"
-                                + "logtimemin, logtimemax, logduration, sql) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                                + "logtimemin, logtimemax, logduration, sql) VALUES('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')",
                         tmpTblName, rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
-                        rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), rs.getString(10));
+                        rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), escapedQuery);
                 haystackDBConn.execNoResultSet(sql);
             }
             rs.close();
+            //*/
 
             // Process queries by calling parent function
             super.processQueries(tmpTblName, clusterId);
+
+            // Update gpsd with query refresh date
+            sql = "UPDATE " + haystackSchema + ".gpsd set last_queries_refreshed_on = now() where gpsd_id =" + clusterId + ";";
+            haystackDBConn.execNoResultSet(sql);
+            // Drop Temp Table
+            sql = "DROP TABLE IF EXISTS " + tmpTblName + ";";
+            haystackDBConn.execNoResultSet(sql);
 
         } catch (Exception e) {
             log.error("Error is loading Queries for GPSD_ID" + clusterId);
@@ -328,9 +357,5 @@ public class Greenplum extends Cluster {
 
     }
 
-
-    public void refreshTableStats(Integer clusterId) {
-
-    }
 
 }

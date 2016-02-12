@@ -38,7 +38,7 @@ import java.util.Date;
     private String haystackSchema;
     private Credentials credentials;
     private Properties properties;
-
+    private Credentials gpsd_credentials;
 
     static Logger log = LoggerFactory.getLogger(ModelService.class.getName());
     private DBConnectService dbConnect ;
@@ -53,6 +53,7 @@ import java.util.Date;
             this.haystackSchema = this.properties.getProperty("main.schema");
             dbConnect = new DBConnectService(DBConnectService.DBTYPE.POSTGRES, sqlPath);
             this.credentials = config.getHaystackDBCredentials();
+            this.gpsd_credentials = config.getGPSDCredentials();
             dbConnect.connect(credentials);
         } catch (Exception e) {
             log.error(e.toString());
@@ -61,22 +62,25 @@ import java.util.Date;
 
     }
 
-    public ClusterService(ConfigProperties config, String dbName) throws Exception {
-        try {
-            this.properties = config.properties;
-            this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
-            this.haystackSchema = this.properties.getProperty("main.schema");
-            dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, sqlPath);
-            this.credentials = config.getHaystackDBCredentials();
-            this.credentials.setDatabase(dbName);
-            dbConnect.connect(credentials);
-        } catch (Exception e) {
-            log.error(e.toString());
-            throw e;
+    /*
+        public ClusterService(ConfigProperties config, String dbName) throws Exception {
+            try {
+                this.properties = config.properties;
+                this.sqlPath = this.properties.getProperty("cluster.sqlDirectory");
+                this.haystackSchema = this.properties.getProperty("main.schema");
+                dbConnect = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, sqlPath);
+                this.credentials = config.getHaystackDBCredentials();
+
+                // Commented out on 11Feb2016 ReFactoring Code
+                //this.credentials.setDatabase(dbName);
+                //dbConnect.connect(credentials);
+            } catch (Exception e) {
+                log.error(e.toString());
+                throw e;
+            }
+
         }
-
-    }
-
+    */
     public Tables getTablesfromCluster() {
         return new Tables();
     }
@@ -93,8 +97,8 @@ import java.util.Date;
 
         // Fetch cluster details from HayStack Schema
         try {
-            String sql = "select gpsd_id, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01'), " +
-                    " coalesce(last_schema_refreshed_on,'1900-01-01') ,db_type as cluster_type, now() as current_time  from " + haystackSchema + ".gpsd where host is not null and is_active = true;";
+            String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+                    " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema + ".gpsd where host is not null and is_active = true;";
             ResultSet rs = dbConnect.execQuery(sql);
             while (rs.next()) {
 
@@ -104,7 +108,19 @@ import java.util.Date;
                 Timestamp currentTime = rs.getTimestamp("current_time");
                 clusterType = rs.getString("cluster_type");
 
-                clusterCred = getCredentials(rs);
+                String hostName = rs.getString("host");
+                Boolean isGPSD = false;
+                if (hostName == null || hostName.length() == 0) { // load from stats
+                    isGPSD = true;
+                }
+
+                if (isGPSD) { // load from stats
+                    clusterCred = this.gpsd_credentials;
+                    clusterCred.setDatabase(rs.getString("gpsd_db"));
+                } else {
+                    clusterCred = getCredentials(rs);
+                }
+
                 // Instantiate Cluster Object based on type
                 switch (clusterType) {
                     case "GREENPLUM":
@@ -121,7 +137,12 @@ import java.util.Date;
                 }
 
                 try {
-                    cluster.connect(clusterCred);
+                    Boolean connectSuccess = cluster.connect(clusterCred);
+                    if (!connectSuccess) { // Set IsActive = false for this gpsd_id, so that we donot try to connect it each time
+                        sql = "UPDATE " + haystackSchema + ".gpsd set is_active = false where gpsd_id = " + clusterId + ";";
+                        dbConnect.execNoResultSet(sql);
+                        continue;
+                    }
                     Integer queryRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("query.refresh.interval.hours"));
                     // Add Refresh Interval to Last refresh time and then check
                     Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
@@ -132,7 +153,8 @@ import java.util.Date;
                     Integer schemaRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("schema.refresh.interval.hours"));
                     lastSchemaRefreshTime.setTime(lastSchemaRefreshTime.getTime() + (schemaRefreshIntervalHours * 60 * 60 * 1000));
                     if (lastSchemaRefreshTime.compareTo(currentTime) < 0) {// if this time is less than current_time, if yes then refresh schema
-                        cluster.refreshTableStats(clusterId);
+                        Tables tables = cluster.loadTables(clusterCred, isGPSD);
+                        cluster.saveGpsdStats(clusterId, tables);
                     }
                 } catch (Exception e) {
                     log.error("Error in refreshing cluster gpsd_id= " + clusterId + " Exception=" + e.toString());
@@ -222,13 +244,53 @@ import java.util.Date;
     }
 
     // This method gets the table details from statistics loaded from GPSD file
-    public Tables getTablefromGPDBStats(Integer gpsd_id) {
+    public Tables getTables(Integer gpsd_id) {
         Tables tablelist = new Tables();
+        String clusterType = "";
+        Cluster cluster;
+        Credentials clusterCred = new Credentials();
         try {
-            //String jsonTables = tablelist.loadfromStats(dbConnect, false);
+            String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+                    " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
+                    ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id;
+            ResultSet rs = dbConnect.execQuery(sql);
+            while (rs.next()) {
 
-            //String sql = "update " + haystackSchema + ".gpsd set json ='" + jsonTables + "' where gpsd_id = " + gpsd_id + ";";
-            //dbConnect.execQuery(sql);
+                Integer clusterId = rs.getInt("gpsd_id");
+                Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
+                Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
+                Timestamp currentTime = rs.getTimestamp("current_time");
+                clusterType = rs.getString("cluster_type");
+
+                String hostName = rs.getString("host");
+                Boolean isGPSD = false;
+                if (hostName == null || hostName.length() == 0) { // load from stats
+                    isGPSD = true;
+                }
+
+                if (isGPSD) { // load from stats
+                    clusterCred = this.gpsd_credentials;
+                    clusterCred.setDatabase(rs.getString("gpsd_db"));
+                } else {
+                    clusterCred = getCredentials(rs);
+                }
+                // Instantiate Cluster Object based on type
+                switch (clusterType) {
+                    case "GREENPLUM":
+                        cluster = new Greenplum();
+                        break;
+                    case "REDSHIFT":
+                        cluster = new Redshift();
+                        break;
+                    case "NETEZZA":
+                        cluster = new Netezza();
+                        break;
+                    default:
+                        throw new Exception("Cluster Type Invalid");
+                }
+                tablelist = cluster.loadTables(clusterCred, isGPSD);
+                cluster.saveGpsdStats(gpsd_id, tablelist);
+            }
 
         } catch (Exception e) {
             log.error("Error while fetching table details from GPSD:" + e.toString());

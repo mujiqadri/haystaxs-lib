@@ -6,6 +6,7 @@ import com.haystack.domain.*;
 
 import com.haystack.parser.JSQLParserException;
 import com.haystack.parser.expression.DoubleValue;
+import com.haystack.parser.parser.TokenMgrError;
 import com.haystack.parser.statement.update.Update;
 import com.haystack.parser.util.ASTGenerator;
 import com.haystack.util.ConfigProperties;
@@ -344,7 +345,7 @@ public class ModelService {
             Statement statement = null;
             try {
                 statement = CCJSqlParserUtil.parse(sqls);
-            } catch (Exception e) {
+            } catch (TokenMgrError e) {
                 // Statement is not a select/update or supported by Parser, store as is;
                 jsonAST = sqls;
                 log.error("ModelService.processSQL() : Error in parsing SQL=" + query.toString());

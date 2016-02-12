@@ -2,6 +2,7 @@ package com.haystack.service.database;
 
 import com.google.gson.*;
 import com.haystack.domain.Table;
+import com.haystack.domain.Tables;
 import com.haystack.parser.util.IntTypeAdapter;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
@@ -31,12 +32,11 @@ public abstract class Cluster {
     DBConnectService haystackDBConn = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
 
 
-    protected HashMap<String, Table> tableHashMap;
-
     protected static Logger log = LoggerFactory.getLogger(Cluster.class.getName());
 
     public boolean connect(Credentials credentials) {
         try {
+            dbConn = new DBConnectService(dbtype);
             dbConn.connect(credentials);
             haystackDBConn.connect(this.configProperties.getHaystackDBCredentials());
         } catch (Exception e) {
@@ -46,14 +46,13 @@ public abstract class Cluster {
         return true;
     }
 
-    public abstract String loadTables(boolean returnJson);
+    public abstract Tables loadTables(Credentials credentials, Boolean isGPSD);
 
     public abstract void loadQueries(Integer clusterId, Timestamp lastRefreshTime);
 
-    public abstract void refreshTableStats(Integer clusterId);
-
     public Cluster() {
         try {
+
             dbConn = new DBConnectService(dbtype, "");
             configProperties = new ConfigProperties();
             configProperties.loadProperties();
@@ -65,16 +64,55 @@ public abstract class Cluster {
         }
     }
 
-    protected void processQueries(String tempQueryTable, Integer clusterId) {
+    public void saveGpsdStats(int gpsdId, Tables tables) {
         try {
-            String sql = "select user_name from haystack_ui.gpsd_users A, haystack_ui.users B\n" +
+            String sql = "delete from " + haystackSchema + ".gpsd_stats where gpsd_id = " + gpsdId;
+            haystackDBConn.execNoResultSet(sql);
+            for (Table table : tables.tableHashMap.values()) {
+                HashMap<String, Object> mapValues = new HashMap<>();
+
+                mapValues.put("gpsd_id", gpsdId);
+                mapValues.put("schema_name", table.schema);
+                mapValues.put("table_name", table.tableName);
+                mapValues.put("size_in_mb", table.stats.sizeOnDisk * 1024);
+                mapValues.put("no_of_rows", table.stats.noOfRows);
+
+                try {
+                    haystackDBConn.insert(haystackSchema + ".gpsd_stats", mapValues);
+                } catch (Exception ex) {
+                    log.error("Error inserting gpsd stats in gpsd_stats table for gpsd_id = " + gpsdId + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
+                    //HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error deleting rows from " + haystackSchema + ".gpsd_stats for gpsd_id = " + gpsdId + " ;Exception:" + e.toString());
+        }
+    }
+    protected void processQueries(String tempQueryTable, Integer clusterId) {
+        String sql = "";
+        try {
+            sql = "select user_name, B.user_id from haystack_ui.gpsd_users A, haystack_ui.users B\n" +
                     "where A.user_id = B.user_id and gpsd_id = " + clusterId;
             ResultSet rsUser = haystackDBConn.execQuery(sql);
             rsUser.next();
             String userSchema = rsUser.getString("user_name");
+            Integer userId = rsUser.getInt("user_id");
+
+            // Get Max QueryLogId
+            sql = "select max(query_log_id)+1 max_qry_log_id FROM " + haystackSchema + ".query_logs;";
+            ResultSet rsQryLogId = haystackDBConn.execQuery(sql);
+            rsQryLogId.next();
+
+            Integer maxQryLogId = rsQryLogId.getInt("max_qry_log_id");
+
+            // Insert record in QUERY_LOG table
+            sql = "INSERT INTO " + haystackSchema + ".query_logs(query_log_id, submitted_on, user_id, status, original_file_name," +
+                    " file_checksum,created_on) VALUES (" + maxQryLogId + ",now()," + userId + ",'SUBMITTED','SCHEDULED_REFRESH'," +
+                    " '" + maxQryLogId + "' || now(), now());";
+            haystackDBConn.execNoResultSet(sql);
 
             // Create Schema and Tables with Partitions
-            createUserSchemaTables(userSchema, tempQueryTable);
+            createUserSchemaTables(userSchema, tempQueryTable, maxQryLogId);
 
             sql = "INSERT INTO " + userSchema + ".queries (logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql)" +
                     "SELECT logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql FROM " + tempQueryTable + ";";
@@ -111,14 +149,14 @@ public abstract class Cluster {
             sql = "UPDATE " + haystackSchema + ".query_log_dates set query_count = X.query_count, sum_duration = X.sum_duration " +
                     " FROM (select logsessiontime::date as log_date,count(*) as query_count, EXTRACT(EPOCH FROM sum(logduration)) as sum_duration " +
                     " FROM  " + userSchema + ".queries group by logsessiontime::date ) as X " +
-                    " where query_log_dates.log_date = X.log_date;";
+                    " where query_log_dates.log_date = X.log_date and query_log_id = " + maxQryLogId + " ;";
             haystackDBConn.execNoResultSet(sql);
 
             // Recreate query_metadata table
             sql = " DROP TABLE IF EXISTS " + userSchema + ".query_metadata;";
             haystackDBConn.execNoResultSet(sql);
 
-            sql = "CREATE TABLE " + userSchema + ".query_metadata( type text, value text ); ";
+            sql = "CREATE TABLE " + userSchema + ".query_metadata( type text, value text )WITH ( OIDS=FALSE ) DISTRIBUTED BY (type);";
             haystackDBConn.execNoResultSet(sql);
 
             sql = "INSERT INTO " + userSchema + ".query_metadata ( type, value) SELECT distinct 'dbname', logdatabase FROM " + userSchema + ".queries;";
@@ -131,48 +169,89 @@ public abstract class Cluster {
             haystackDBConn.execNoResultSet(sql);
 
         } catch (Exception e) {
-
+            log.error("Error is creating schema and tables to ProcessQueryLog, gpsd_id=" + clusterId);
         }
     }
 
-    private void createUserSchemaTables(String userSchema, String tempQueryTable) throws Exception {
+    private void createUserSchemaTables(String userSchema, String tempQueryTable, Integer maxQryLogId) throws Exception {
 
         // 01. Check User Schema Exists
         String sql = "select count(*) as count from pg_catalog.pg_namespace where nspname = '" + userSchema + "'";
-        ResultSet rsCount = haystackDBConn.execQuery(sql);
-        rsCount.next();
-        if (rsCount.getInt("count") == 0) { // Create Schema
-            sql = "CREATE SCHEMA " + userSchema + ";";
-            haystackDBConn.execNoResultSet(sql);
-        }
 
-        // 02. Create AST Table
-        sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('ast'))";
-        rsCount = haystackDBConn.execQuery(sql);
-        rsCount.next();
-        if (rsCount.getInt("count") == 0) { // Create AST Table
-            sql = "CREATE TABLE " + userSchema + ".ast ( ast_id serial PRIMARY KEY, ast_json text, checksum text)";
-            haystackDBConn.execNoResultSet(sql);
-        }
+        try {
+            ResultSet rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create Schema
+                sql = "CREATE SCHEMA " + userSchema + ";";
+                haystackDBConn.execNoResultSet(sql);
+            }
 
-        // 03. Create AST Queries Table
-        sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('ast_queries'))";
-        rsCount = haystackDBConn.execQuery(sql);
-        rsCount.next();
-        if (rsCount.getInt("count") == 0) { // Create AST Queries Table
-            sql = "CREATE TABLE " + userSchema + ".ast_queries ( ast_queries_id serial primary key, queries_id integer NOT NULL,ast_json text,checksum text,ast_id integer NOT NULL);";
-            haystackDBConn.execNoResultSet(sql);
-        }
+            // 02. Create AST Table
+            sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('ast')";
+            rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create AST Table
+                sql = "CREATE TABLE " + userSchema + ".ast ( ast_id serial , ast_json text, checksum text) WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, OIDS=FALSE )DISTRIBUTED BY (ast_id);";
+                haystackDBConn.execNoResultSet(sql);
+            }
 
-        // 04. Create Queries Table
-        sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('queries'))";
-        rsCount = haystackDBConn.execQuery(sql);
-        rsCount.next();
-        if (rsCount.getInt("count") == 0) { // Create Queries Table
-            sql = "CREATE TABLE " + userSchema + ".queries ( id serial primary key ,logsession text,logcmdcount text, logdatabase text," +
-                    "loguser text,logpid text,logsessiontime timestamp with time zone,logtimemin timestamp with time zone, " +
-                    " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text);";
-            haystackDBConn.execNoResultSet(sql);
+            // 03. Create AST Queries Table
+            sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('ast_queries')";
+            rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create AST Queries Table
+                sql = "CREATE TABLE " + userSchema + ".ast_queries ( ast_queries_id serial , queries_id integer NOT NULL,ast_json text,checksum text,ast_id integer NOT NULL)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
+                        " OIDS=FALSE)DISTRIBUTED BY (queries_id);";
+                haystackDBConn.execNoResultSet(sql);
+            }
+
+            // 04. Create Queries Table
+            sql = "select count(*) as count  from information_schema.tables where upper(table_schema) = upper('" + userSchema + "') and upper(table_name) = upper('queries')";
+            rsCount = haystackDBConn.execQuery(sql);
+            rsCount.next();
+            if (rsCount.getInt("count") == 0) { // Create Queries Table
+                sql = "CREATE TABLE " + userSchema + ".queries ( id serial ,logsession text,logcmdcount text, logdatabase text," +
+                        "loguser text,logpid text,logsessiontime timestamp with time zone,logtimemin timestamp with time zone, " +
+                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
+                        " OIDS=FALSE) DISTRIBUTED BY (id) " +
+                        " PARTITION BY RANGE(logsessiontime) ( START (date '1900-01-01') INCLUSIVE END ( date '1900-01-02') EXCLUSIVE\n" +
+                        " EVERY (INTERVAL '1 day'));";
+                haystackDBConn.execNoResultSet(sql);
+            }
+
+            // CREATE PARTITION - find the distinct dates from the external table to create partitions
+            sql = "SELECT logsessiontime::date as logsessiontime FROM " + tempQueryTable + " group by logsessiontime::date";
+
+            ResultSet rsDates = haystackDBConn.execQuery(sql);
+
+            while (rsDates.next()) {
+                String monthpartition_name = rsDates.getString("logsessiontime");
+                sql = "SELECT count(*) as count FROM pg_partitions WHERE partitionname = '" + monthpartition_name + "' " +
+                        " AND lower(tablename) = lower('queries') " + " AND lower(schemaname) = '" + userSchema + "';";
+                rsCount = haystackDBConn.execQuery(sql);
+                rsCount.next();
+
+                if (rsCount.getInt("count") == 0) {
+                    // Create Month Partition
+                    sql = "ALTER TABLE " + userSchema + ".queries ADD PARTITION \"" + monthpartition_name + "\" START ('" + monthpartition_name + " 00:00:00.000') " +
+                            " INCLUSIVE END ('" + monthpartition_name + " 23:59:59.999') EXCLUSIVE;";
+                    haystackDBConn.execNoResultSet(sql);
+                }
+
+                // Check if query_log_dates has entry for the current date, if not insert a row
+                // Insert record in query_log and query_log_dates tables
+                sql = "SELECT COUNT(*) as count FROM " + haystackSchema + ".query_log_dates where query_log_id=" + maxQryLogId + " AND log_date = '" + monthpartition_name + "';";
+                rsCount = haystackDBConn.execQuery(sql);
+                rsCount.next();
+
+                if (rsCount.getInt("count") == 0) {
+                    sql = " INSERT INTO " + haystackSchema + ".query_log_dates(query_log_id, log_date) VALUES(" + maxQryLogId + ",'" + monthpartition_name + "');";
+                    haystackDBConn.execNoResultSet(sql);
+                }
+
+            }
+        } catch (Exception e) {
+            throw e;
         }
 
     }

@@ -1,5 +1,6 @@
 package com.haystack.service.database;
 
+import com.haystack.domain.Tables;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
 
@@ -14,10 +15,6 @@ public class Netezza extends Cluster {
 
     }
 
-    @Override
-    public void refreshTableStats(Integer clusterId) {
-
-    }
 
     @Override
     public void loadQueries(Integer clusterId, Timestamp lastRefreshTime) {
@@ -25,7 +22,7 @@ public class Netezza extends Cluster {
     }
 
     @Override
-    public String loadTables(boolean returnJson) {
+    public Tables loadTables(Credentials credentials, Boolean isGPSD) {
         return null;
     }
 
