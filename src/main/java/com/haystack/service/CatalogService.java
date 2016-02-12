@@ -289,28 +289,34 @@ public class CatalogService {
 
     private void persistAST(String userSchemaName, Integer queryId, String jsonAST) {
         try {
-            String jsonMD5 = getMD5(jsonAST);
 
-            // Check if another AST exists with the same MD5
-            String sql = "select min(ast_id) as ast_id, count(ast_id) as count from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "';";
-            ResultSet rsAST = dbConnect.execQuery(sql);
-            rsAST.next();
+            String sql = "select count(*) as count from " + userSchemaName + ".ast_queries where queries_id =" + queryId + ";";
+            ResultSet rsCnt = dbConnect.execQuery(sql);
 
-            Integer cntMatchedAST = rsAST.getInt("count");
-            Integer astID = rsAST.getInt("ast_id");
+            if (rsCnt.getInt("count") == 0) {
+                String jsonMD5 = getMD5(jsonAST);
 
-            if (cntMatchedAST == 0) { // No Matching AST found insert new row in schema.ast table and get the new id to save in schema.ast_queries table
-                sql = "insert into " + userSchemaName + ".ast(ast_json, checksum) values('" + jsonAST + "','" + jsonMD5 + "');";
+                // Check if another AST exists with the same MD5
+                sql = "select min(ast_id) as ast_id, count(ast_id) as count from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "';";
+                ResultSet rsAST = dbConnect.execQuery(sql);
+                rsAST.next();
+
+                Integer cntMatchedAST = rsAST.getInt("count");
+                Integer astID = rsAST.getInt("ast_id");
+
+                if (cntMatchedAST == 0) { // No Matching AST found insert new row in schema.ast table and get the new id to save in schema.ast_queries table
+                    sql = "insert into " + userSchemaName + ".ast(ast_json, checksum) values('" + jsonAST + "','" + jsonMD5 + "');";
+                    dbConnect.execNoResultSet(sql);
+                    // Get new generated AST_ID
+                    sql = "select max(ast_id) as ast_id from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "'";
+                    ResultSet rsASTId = dbConnect.execQuery(sql);
+                    rsASTId.next();
+                    astID = rsASTId.getInt("ast_id");
+                }
+                sql = "insert into " + userSchemaName + ".ast_queries(queries_id, ast_json,checksum,ast_id) values(" + queryId + ",'" + jsonAST + "','" + jsonMD5 + "'," + astID + ");";
                 dbConnect.execNoResultSet(sql);
-                // Get new generated AST_ID
-                sql = "select max(ast_id) as ast_id from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "'";
-                ResultSet rsASTId = dbConnect.execQuery(sql);
-                rsASTId.next();
-                astID = rsASTId.getInt("ast_id");
+                // Update the AST in the queryies_ast table and the Unique AST Table
             }
-            sql = "insert into " + userSchemaName + ".ast_queries(queries_id, ast_json,checksum,ast_id) values(" + queryId + ",'" + jsonAST + "','" + jsonMD5 + "'," + astID + ");";
-            dbConnect.execNoResultSet(sql);
-            // Update the AST in the queryies_ast table and the Unique AST Table
         } catch (Exception e) {
             log.error("Error in persisting AST for queryID:" + queryId);
         }
