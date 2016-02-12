@@ -114,8 +114,8 @@ public abstract class Cluster {
             // Create Schema and Tables with Partitions
             createUserSchemaTables(userSchema, tempQueryTable, maxQryLogId);
 
-            sql = "INSERT INTO " + userSchema + ".queries (logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql)" +
-                    "SELECT logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql FROM " + tempQueryTable + ";";
+            sql = "INSERT INTO " + userSchema + ".queries (logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, gpsd_id)" +
+                    "SELECT logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql," + clusterId + " FROM " + tempQueryTable + ";";
             haystackDBConn.execNoResultSet(sql);
 
             // Categorize queries
@@ -213,7 +213,7 @@ public abstract class Cluster {
             if (rsCount.getInt("count") == 0) { // Create Queries Table
                 sql = "CREATE TABLE " + userSchema + ".queries ( id serial ,logsession text,logcmdcount text, logdatabase text," +
                         "loguser text,logpid text,logsessiontime timestamp with time zone,logtimemin timestamp with time zone, " +
-                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
+                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text, gpsd_id integer)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
                         " OIDS=FALSE) DISTRIBUTED BY (id) " +
                         " PARTITION BY RANGE(logsessiontime) ( START (date '1900-01-01') INCLUSIVE END ( date '1900-01-02') EXCLUSIVE\n" +
                         " EVERY (INTERVAL '1 day'));";
@@ -266,7 +266,7 @@ public abstract class Cluster {
             if (rsCount.getInt("count") == 0) { // Create Queries Table
                 sql = "CREATE TABLE " + userSchema + ".queries ( id serial ,logsession text,logcmdcount text, logdatabase text," +
                         "loguser text,logpid text,logsessiontime timestamp with time zone,logtimemin timestamp with time zone, " +
-                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text)WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
+                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text, gpsd_id integer )WITH (APPENDONLY=true, COMPRESSTYPE=quicklz, \n" +
                         " OIDS=FALSE) DISTRIBUTED BY (id) " +
                         " PARTITION BY RANGE(logsessiontime) ( START (date '1900-01-01') INCLUSIVE END ( date '1900-01-02') EXCLUSIVE\n" +
                         " EVERY (INTERVAL '1 day'));";

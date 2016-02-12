@@ -484,7 +484,7 @@ public class CatalogService {
     // Pass the QueryId, against which the QueryLogDates table will be populated
     // Pass the QueryLogDirectory, where the csv log files have been uncompressed
 
-    public boolean processQueryLog(int queryLogId, String queryLogDirectory) {
+    public boolean processQueryLog(int queryLogId, int gpsd_id, String queryLogDirectory) {
 
         String userName = "";
         Integer userId = null;
@@ -524,7 +524,7 @@ public class CatalogService {
                 Date date = new Date();
                 saveUserInboxMsg(userId, "QUERYLOG_STATUS", "PROCESSING", "Processing started for Query Log File:" + original_file_name + " @DateTime=" + dateFormat.format(date), "JOB PROCESSING", "CatalogService.processQueryLog");
 
-                loadQueries(extTableName, queryLogId, userName);
+                loadQueries(extTableName, queryLogId, userName, gpsd_id);
             } catch (Exception e) {
                 log.error("Unable to populate queries, Exception:" + e.toString());
                 HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to load queries from external table.", e.toString(),
@@ -553,14 +553,14 @@ public class CatalogService {
         }
     }
 
-    private void loadQueries(String extTableName, Integer QueryId, String userId) throws SQLException {
+    private void loadQueries(String extTableName, Integer QueryId, String userId, Integer gpsd_id) throws SQLException {
 
         String strRunId = String.format("%05d", QueryId);
         String queryLogTableName = userId + ".qry" + strRunId;
         String schemaName = userId;
         ResultSet rs = null;
 
-        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','" + queryTblName + "','" + extTableName + "'," + QueryId + ");";
+        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','" + queryTblName + "','" + extTableName + "'," + QueryId + "," + gpsd_id + ");";
         rs = dbConnect.execQuery(sql);
 
 
