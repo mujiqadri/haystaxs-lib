@@ -107,8 +107,8 @@ public abstract class Cluster {
 
             // Insert record in QUERY_LOG table
             sql = "INSERT INTO " + haystackSchema + ".query_logs(query_log_id, submitted_on, user_id, status, original_file_name," +
-                    " file_checksum,created_on) VALUES (" + maxQryLogId + ",now()," + userId + ",'SUBMITTED','SCHEDULED_REFRESH'," +
-                    " '" + maxQryLogId + "' || now(), now());";
+                    " file_checksum,created_on, gpsd_id) VALUES (" + maxQryLogId + ",now()," + userId + ",'SUBMITTED','SCHEDULED_REFRESH'," +
+                    " '" + maxQryLogId + "' || now(), now()," + clusterId + " );";
             haystackDBConn.execNoResultSet(sql);
 
             // Create Schema and Tables with Partitions
