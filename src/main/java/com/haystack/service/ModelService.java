@@ -49,6 +49,10 @@ public class ModelService {
             //throw new Exception("Unable to read config.properties files");
         }
     }
+
+    public static void main(String args[]) {
+
+    }
     public void setTableList(Tables tbllist){
         this.tablelist = tbllist;
     }
