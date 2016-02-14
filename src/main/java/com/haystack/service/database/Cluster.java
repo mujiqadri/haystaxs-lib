@@ -112,7 +112,11 @@ public abstract class Cluster {
             haystackDBConn.execNoResultSet(sql);
 
             // Create Schema and Tables with Partitions
-            createUserSchemaTables(userSchema, tempQueryTable, maxQryLogId);
+            try {
+                createUserSchemaTables(userSchema, tempQueryTable, maxQryLogId);
+            } catch(Exception ex) {
+                log.warn("User schema has already been created.");
+            }
 
             sql = "INSERT INTO " + userSchema + ".queries (logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, gpsd_id)" +
                     "SELECT logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql," + clusterId + " FROM " + tempQueryTable + ";";

@@ -1,10 +1,6 @@
 package com.haystack.service;
 
-import com.haystack.domain.Column;
-import com.haystack.domain.Query;
-import com.haystack.domain.Table;
 import com.haystack.domain.Tables;
-import com.haystack.parser.util.TablesNamesFinder;
 import com.haystack.service.database.Cluster;
 import com.haystack.service.database.Greenplum;
 import com.haystack.service.database.Netezza;
@@ -12,16 +8,15 @@ import com.haystack.service.database.Redshift;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
-import com.sun.tools.corba.se.idl.constExpr.Times;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
-import java.io.IOException;
-import java.sql.*;
-import java.util.*;
-import java.util.Date;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Properties;
 
 /**
  * Created by qadrim on 15-04-23.
@@ -85,6 +80,29 @@ import java.util.Date;
         return new Tables();
     }
 
+    public boolean tryConnect(String host, String dbName, String userName, String password, int port, String clusterType) throws Exception {
+        boolean result = true;
+        Cluster cluster = null;
+        Credentials clusterCred = new Credentials();
+        clusterCred.setCredentials(host, Integer.toString(port), dbName, userName, password);
+
+        // Instantiate Cluster Object based on type
+        switch (clusterType) {
+            case "GREENPLUM":
+                cluster = new Greenplum();
+                break;
+            case "REDSHIFT":
+                cluster = new Redshift();
+                break;
+            case "NETEZZA":
+                cluster = new Netezza();
+                break;
+            default:
+                throw new Exception("Cluster Type Invalid");
+        }
+
+        return (cluster.connect(clusterCred));
+    }
 
     // Refresh method checks the
     public boolean refresh(Integer clusterId) {
