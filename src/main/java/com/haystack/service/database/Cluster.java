@@ -115,7 +115,7 @@ public abstract class Cluster {
             try {
                 createUserSchemaTables(userSchema, tempQueryTable, maxQryLogId);
             } catch(Exception ex) {
-                log.warn("User schema has already been created.");
+                log.warn("User schema {} has already been created.", userSchema);
             }
 
             sql = "INSERT INTO " + userSchema + ".queries (logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, gpsd_id)" +
@@ -173,7 +173,7 @@ public abstract class Cluster {
             haystackDBConn.execNoResultSet(sql);
 
         } catch (Exception e) {
-            log.error("Error is creating schema and tables to ProcessQueryLog, gpsd_id=" + clusterId);
+            log.error("Error is creating schema and tables to ProcessQueryLog, gpsd_id={}; Exception msg: ", clusterId, e.getMessage());
         }
     }
 

@@ -210,18 +210,21 @@ public class Greenplum extends Cluster {
 
     @Override
     public void loadQueries(Integer clusterId, Timestamp lastRefreshTime) {
-
         // Connect to the Cluster to fetch the queries,
         // Load the queries in a temp table in haystack Database
         // From this temp table create partitions for the queries table in userSchema in Haystack DB
         try {
+            log.trace("GREEMPLUM.loadQueries() Invoked for ClusterId {}", clusterId);
+
             String sql = "SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,\n" +
                     "                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql\n" +
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
                     "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL and logsessiontime > '" + lastRefreshTime + "' " +
                     "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid\n" +
-                    "\t\tHAVING length(min(logdebug)) > 0;";
+                    "\t\tHAVING length(min(logdebug)) > 0 LIMIT 100;";
             ResultSet rs = dbConn.execQuery(sql);
+
+            log.trace("GREEMPLUM.loadQueries() Fetched logs complete.");
 
             // Create a new connection to Haystack Database, recreate a temp table using gpsd_id and load queries into that table
 
@@ -245,18 +248,29 @@ public class Greenplum extends Cluster {
                     "  sql text);";
             haystackDBConn.execNoResultSet(sql);
 
-            while (rs.next()) {
-                // Escape Quote in SQL Statement
-                String logdebug = rs.getString(10);
-                String escapedQuery = logdebug.replace("'", "\\'");
+            log.trace("GREEMPLUM.loadQueries() Create temp table {} completed. Now going to insert all logs into the temp table...", tmpTblName);
 
-                sql = String.format("INSERT INTO %s ( logsession, logcmdcount, logdatabase, loguser, logpid, logsessiontime,"
-                                + "logtimemin, logtimemax, logduration, sql) VALUES('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')",
-                        tmpTblName, rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
-                        rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), escapedQuery);
-                haystackDBConn.execNoResultSet(sql);
+            while (rs.next()) {
+                String logdebug = null, escapedQuery = null;
+                try {
+                    // Escape Quote in SQL Statement
+                    logdebug = rs.getString(10);
+                    escapedQuery = logdebug.replace("'", "\\'");
+
+                    sql = String.format("INSERT INTO %s ( logsession, logcmdcount, logdatabase, loguser, logpid, logsessiontime,"
+                                    + "logtimemin, logtimemax, logduration, sql) VALUES('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')",
+                            tmpTblName, rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
+                            rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), escapedQuery);
+                    haystackDBConn.execNoResultSet(sql);
+                } catch (Exception ex) {
+                    // I have specifically kept this a trace and not and error log
+                    log.trace("Error processing query. Exception message: {}", ex.getMessage());
+                }
             }
             rs.close();
+
+            log.trace("GREEMPLUM.loadQueries() Logs inserted into the temp table completed.", tmpTblName);
+
             //*/
 
             // Process queries by calling parent function
