@@ -80,6 +80,9 @@ import java.util.Properties;
         return new Tables();
     }
 
+    /**
+     * This method is used by the UI to try to connect to a cluster before registering it in the haystaxs DB.
+     */
     public boolean tryConnect(String host, String dbName, String userName, String password, int port, String clusterType) throws Exception {
         boolean result = true;
         Cluster cluster = null;

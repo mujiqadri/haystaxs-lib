@@ -66,6 +66,7 @@ public abstract class Cluster {
 
     public void saveGpsdStats(int gpsdId, Tables tables) {
         try {
+            // TODO: This should be kept so that the Schema size can be compared later on..
             String sql = "delete from " + haystackSchema + ".gpsd_stats where gpsd_id = " + gpsdId;
             haystackDBConn.execNoResultSet(sql);
             for (Table table : tables.tableHashMap.values()) {

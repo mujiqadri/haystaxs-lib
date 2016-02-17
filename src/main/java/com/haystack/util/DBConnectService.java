@@ -61,12 +61,9 @@ public class DBConnectService {
         StringBuilder url = new StringBuilder();
         switch (this.dbTYPE) {
             case GREENPLUM:
-                url.append("jdbc:postgresql://").append(this.host).append(":").append(this.port).append("/").append(this.dbName);
-                break;
             case HAWQ:
-                url.append("jdbc:postgresql://").append(this.host).append(":").append(this.port).append("/").append(this.dbName);
-                break;
             case POSTGRES:
+            case REDSHIFT:
                 url.append("jdbc:postgresql://").append(this.host).append(":").append(this.port).append("/").append(this.dbName);
                 break;
             default:
@@ -99,6 +96,7 @@ public class DBConnectService {
 
         }
     }
+
     public boolean connect() throws SQLException, ClassNotFoundException {
         if (host.isEmpty() || port.isEmpty() || dbName.isEmpty() || user.isEmpty() || pass.isEmpty()) {
             log.error("Database credentials missing, All fields are mandatory.");
@@ -106,12 +104,9 @@ public class DBConnectService {
         }
         switch (this.dbTYPE) {
             case GREENPLUM:
-                Class.forName("org.postgresql.Driver");
-                break;
             case HAWQ:
-                Class.forName("org.postgresql.Driver");
-                break;
             case POSTGRES:
+            case REDSHIFT:
                 Class.forName("org.postgresql.Driver");
                 break;
             default:
