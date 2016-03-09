@@ -3,19 +3,30 @@ package com.haystack.parser.util;
 import com.haystack.domain.Attribute;
 import com.haystack.domain.Condition;
 import com.haystack.domain.QryTable;
-import com.haystack.parser.expression.*;
-import com.haystack.parser.expression.arithmetic.*;
-import com.haystack.parser.expression.conditional.AndExpression;
-import com.haystack.parser.expression.conditional.OrExpression;
-import com.haystack.parser.expression.relational.*;
 import com.haystack.parser.schema.Column;
 import com.haystack.parser.schema.Table;
-import com.haystack.parser.statement.Statement;
+
+/*
+import net.sf.jsqlparser.statement.delete.Delete;
+import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.replace.*;
+*/
+
+
 import com.haystack.parser.statement.delete.Delete;
 import com.haystack.parser.statement.insert.Insert;
 import com.haystack.parser.statement.replace.Replace;
 import com.haystack.parser.statement.select.*;
 import com.haystack.parser.statement.update.Update;
+
+
+import com.haystack.parser.expression.*;
+import com.haystack.parser.expression.arithmetic.*;
+import com.haystack.parser.expression.conditional.AndExpression;
+import com.haystack.parser.expression.conditional.OrExpression;
+import com.haystack.parser.expression.relational.*;
+
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +40,7 @@ import java.util.List;
 
 
 public class ASTGenerator implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor {
-    static Logger log = LoggerFactory.getLogger(TablesNamesFinder.class.getName());
+    static Logger log = LoggerFactory.getLogger(ASTGenerator.class.getName());
 
     public StringBuilder json = new StringBuilder();
     public ArrayList<QryTable> tables;

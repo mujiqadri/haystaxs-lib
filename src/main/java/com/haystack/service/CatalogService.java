@@ -290,18 +290,19 @@ public class CatalogService {
     private void persistAST(String userSchemaName, Integer queryId, String jsonAST) {
         try {
 
-            String sql = "select count(*) as count from " + userSchemaName + ".ast_queries where queries_id =" + queryId + ";";
+            String sql = "select count(*) as cnt_rows from " + userSchemaName + ".ast_queries where queries_id =" + queryId + ";";
             ResultSet rsCnt = dbConnect.execQuery(sql);
+            rsCnt.next();
 
-            if (rsCnt.getInt("count") == 0) {
+            if (rsCnt.getInt("cnt_rows") == 0) {
                 String jsonMD5 = getMD5(jsonAST);
 
                 // Check if another AST exists with the same MD5
-                sql = "select min(ast_id) as ast_id, count(ast_id) as count from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "';";
+                sql = "select min(ast_id) as ast_id, count(ast_id) as count_ast from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "';";
                 ResultSet rsAST = dbConnect.execQuery(sql);
                 rsAST.next();
 
-                Integer cntMatchedAST = rsAST.getInt("count");
+                Integer cntMatchedAST = rsAST.getInt("count_ast");
                 Integer astID = rsAST.getInt("ast_id");
 
                 if (cntMatchedAST == 0) { // No Matching AST found insert new row in schema.ast table and get the new id to save in schema.ast_queries table

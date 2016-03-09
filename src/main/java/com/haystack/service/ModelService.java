@@ -4,25 +4,26 @@ package com.haystack.service;
 import com.google.gson.*;
 import com.haystack.domain.*;
 
-import com.haystack.parser.JSQLParserException;
-import com.haystack.parser.expression.DoubleValue;
+
 import com.haystack.parser.parser.TokenMgrError;
 import com.haystack.parser.statement.update.Update;
 import com.haystack.parser.util.ASTGenerator;
+import com.haystack.parser.util.parserDOM;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.HSException;
-import com.sun.org.apache.xpath.internal.operations.Bool;
+
+//import net.sf.jsqlparser.parser.CCJSqlParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.haystack.parser.parser.CCJSqlParserUtil;
 import com.haystack.parser.statement.Statement;
 import com.haystack.parser.statement.select.Select;
-import com.haystack.parser.util.TablesNamesFinder;
+import com.haystack.parser.util.parserDOM;
+
 
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
-import java.sql.ResultSet;
 import java.util.*;
 
 /**
@@ -334,7 +335,8 @@ public class ModelService {
     }
 
     public String processSQL(Integer queryId, String query, double executionTime, Integer userId, String current_search_path) {
-        TablesNamesFinder currtablesNF = new TablesNamesFinder();
+        parserDOM currtablesNF = new parserDOM();
+
         String jsonAST = "";
         try {
             // TODO: Parse Statement and annotate the input Query object with details
@@ -349,6 +351,10 @@ public class ModelService {
             Statement statement = null;
             try {
                 statement = CCJSqlParserUtil.parse(sqls);
+
+                //statement = (Statement)net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(sqls);
+
+
             } catch (TokenMgrError e) {
                 // Statement is not a select/update or supported by Parser, store as is;
                 jsonAST = sqls;
@@ -455,7 +461,7 @@ public class ModelService {
         }
     }
 
-    private void divideTimeAmongstTables(TablesNamesFinder currtablesNF, double executionTime) {
+    private void divideTimeAmongstTables(parserDOM currtablesNF, double executionTime) {
 
         // If Table is columnar then goto A else goto B
         // A) Calculate the number of columns used for each table in the query = NoOfColsUsed
@@ -539,7 +545,7 @@ public class ModelService {
         }
     }
 
-    private void processConditions(TablesNamesFinder currtablesNF, String current_search_path) {
+    private void processConditions(parserDOM currtablesNF, String current_search_path) {
         // === Extract Conditions
         // === If where clause then increment UsageScore for the column
         // === If join condition then connect the two tables together and increment join usage for left and right column
@@ -699,7 +705,7 @@ public class ModelService {
     }
 
 
-    private Column resolveColumnForJoin(Attribute column, TablesNamesFinder currTablesNF, String current_search_path) {
+    private Column resolveColumnForJoin(Attribute column, parserDOM currTablesNF, String current_search_path) {
         String tableName = column.tableName;
         String columnName = column.name;
         String schemaName = column.schema;
@@ -794,7 +800,7 @@ public class ModelService {
         return col;
     }
 
-    private void processProjectedColumn(Attribute attribute, TablesNamesFinder currTablesNF, String current_search_path) {
+    private void processProjectedColumn(Attribute attribute, parserDOM currTablesNF, String current_search_path) {
         try
         {
             // For Debugging
@@ -822,7 +828,7 @@ public class ModelService {
         }
     }
 
-    private Column resolveColumn(Attribute column, TablesNamesFinder currTablesNF, String current_search_path) {
+    private Column resolveColumn(Attribute column, parserDOM currTablesNF, String current_search_path) {
         String tableName = column.tableName;
         String columnName = column.name;
         String schemaName = column.schema;
@@ -952,7 +958,7 @@ public class ModelService {
     }
 
     // TODO No need for this function since the child attribute will always increment usage
-    private Column resolveColAliasFromSubQuery(Attribute column, TablesNamesFinder currTablesNF) {
+    private Column resolveColAliasFromSubQuery(Attribute column, parserDOM currTablesNF) {
         Column retColumn = null;
         int intLevel = column.level.lastIndexOf(".");
         if (intLevel == -1) { // Root level

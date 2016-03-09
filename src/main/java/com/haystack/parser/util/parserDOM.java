@@ -41,15 +41,14 @@ import java.util.HashMap;
 import java.util.List;
 
 import com.haystack.domain.Attribute;
-import com.sun.scenario.effect.impl.sw.java.JSWBlend_EXCLUSIONPeer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Find all used tables within an select statement.
  */
-public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor {
-    static Logger log = LoggerFactory.getLogger(TablesNamesFinder.class.getName());
+public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor {
+    static Logger log = LoggerFactory.getLogger(parserDOM.class.getName());
     public ArrayList<QryTable> tables;
     public ArrayList<Attribute> columns;
     public ArrayList<Condition> conditions;

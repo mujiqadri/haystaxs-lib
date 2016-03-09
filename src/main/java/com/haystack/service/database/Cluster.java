@@ -32,13 +32,12 @@ public abstract class Cluster {
     DBConnectService haystackDBConn = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
 
 
-    protected static Logger log = LoggerFactory.getLogger(Cluster.class.getName());
+    protected final Logger log = LoggerFactory.getLogger(Cluster.class.getName());
 
     public boolean connect(Credentials credentials) {
         try {
             dbConn = new DBConnectService(dbtype);
             dbConn.connect(credentials);
-            haystackDBConn.connect(this.configProperties.getHaystackDBCredentials());
         } catch (Exception e) {
             log.error("Error connecting to cluster, " + credentials.toString() + " Exception:" + e.toString());
             return false;
@@ -58,6 +57,7 @@ public abstract class Cluster {
             configProperties.loadProperties();
             properties = configProperties.properties;
             this.haystackSchema = this.properties.getProperty("main.schema");
+            haystackDBConn.connect(this.configProperties.getHaystackDBCredentials());
 
         } catch (Exception e) {
 
@@ -67,7 +67,10 @@ public abstract class Cluster {
     public void saveGpsdStats(int gpsdId, Tables tables) {
         try {
             String sql = "delete from " + haystackSchema + ".gpsd_stats where gpsd_id = " + gpsdId;
-            haystackDBConn.execNoResultSet(sql);
+
+            // Don't delete gpsd_stats keep it for history
+            // haystackDBConn.execNoResultSet(sql);
+
             for (Table table : tables.tableHashMap.values()) {
                 HashMap<String, Object> mapValues = new HashMap<>();
 

@@ -5,10 +5,13 @@ import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
 
 import javax.swing.text.StyledEditorKit;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.util.Date;
 import java.util.HashMap;
+
+import org.postgresql.util.PGInterval;
 
 /**
  * Created by qadrim on 16-02-04.
@@ -245,17 +248,53 @@ public class Greenplum extends Cluster {
                     "  sql text);";
             haystackDBConn.execNoResultSet(sql);
 
+            PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + tmpTblName + " ( logsession, "
+                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql) "
+                    + " VALUES(?,?,?,?,?,?,?,?,?,?)");
+
+            Integer batchSize = 1000;
+            Integer currBatchSize = 0;
             while (rs.next()) {
+                currBatchSize++;
                 // Escape Quote in SQL Statement
                 String logdebug = rs.getString(10);
                 String escapedQuery = logdebug.replace("'", "\\'");
 
-                sql = String.format("INSERT INTO %s ( logsession, logcmdcount, logdatabase, loguser, logpid, logsessiontime,"
-                                + "logtimemin, logtimemax, logduration, sql) VALUES('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')",
-                        tmpTblName, rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
-                        rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), escapedQuery);
-                haystackDBConn.execNoResultSet(sql);
+                try {
+                    /*sql = String.format("INSERT INTO %s ( logsession, logcmdcount, logdatabase, loguser, logpid, logsessiontime,"
+                                    + "logtimemin, logtimemax, logduration, sql) VALUES('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')",
+                            tmpTblName, rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
+                            rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), escapedQuery);
+
+                    haystackDBConn.execNoResultSet(sql);
+                    */
+                    statement.clearParameters();
+                    statement.setString(1, rs.getString(1));
+                    statement.setString(2, rs.getString(2));
+                    statement.setString(3, rs.getString(3));
+                    statement.setString(4, rs.getString(4));
+                    statement.setString(5, rs.getString(5));
+                    statement.setTimestamp(6, rs.getTimestamp(6));
+                    statement.setTimestamp(7, rs.getTimestamp(7));
+                    statement.setTimestamp(8, rs.getTimestamp(8));
+
+                    PGInterval pgi = (PGInterval) rs.getObject(9);
+                    statement.setObject(9, pgi);
+                    statement.setString(10, escapedQuery);
+                    //statement.executeUpdate();
+                    statement.addBatch();
+
+                    if (currBatchSize >= batchSize) {
+                        statement.executeBatch();
+                        currBatchSize = 0;
+                    }
+
+
+                } catch (Exception e) {
+                    log.error("Exception in processing query SQL='" + escapedQuery + "  Exception=" + e.toString());
+                }
             }
+            statement.executeBatch();
             rs.close();
             //*/
 
