@@ -66,6 +66,7 @@ public abstract class Cluster {
 
     public void saveGpsdStats(int gpsdId, Tables tables) {
         try {
+            // TODO: This should be kept so that the Schema size can be compared later on..
             String sql = "delete from " + haystackSchema + ".gpsd_stats where gpsd_id = " + gpsdId;
 
             // Don't delete gpsd_stats keep it for history
@@ -118,7 +119,7 @@ public abstract class Cluster {
             try {
                 createUserSchemaTables(userSchema, tempQueryTable, maxQryLogId);
             } catch(Exception ex) {
-                log.warn("User schema has already been created.");
+                log.warn("User schema {} has already been created.", userSchema);
             }
 
             sql = "INSERT INTO " + userSchema + ".queries (logsession, logcmdcount,logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, gpsd_id)" +
@@ -176,7 +177,7 @@ public abstract class Cluster {
             haystackDBConn.execNoResultSet(sql);
 
         } catch (Exception e) {
-            log.error("Error is creating schema and tables to ProcessQueryLog, gpsd_id=" + clusterId);
+            log.error("Error is creating schema and tables to ProcessQueryLog, gpsd_id={}; Exception msg: ", clusterId, e.getMessage());
         }
     }
 
