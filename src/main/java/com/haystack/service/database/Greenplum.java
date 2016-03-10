@@ -366,12 +366,17 @@ public class Greenplum extends Cluster {
 
         Integer maxQryLogId = -1;
         try {
-            sql = "select user_name, B.user_id from haystack_ui.gpsd_users A, haystack_ui.users B\n" +
-                    "where A.user_id = B.user_id and is_default = true and gpsd_id = " + clusterId;
+            sql = "select user_name, B.user_id, C.dbname\n" +
+                    "from " + haystackSchema + ".gpsd_users A, " + haystackSchema + ".users B, " + haystackSchema + ".gpsd C\n" +
+                    "where A.user_id = B.user_id and is_default = true \n" +
+                    "and A.gpsd_id = C.gpsd_id\n" +
+                    "and A.gpsd_id = " + clusterId;
+
             ResultSet rsUser = haystackDBConn.execQuery(sql);
             rsUser.next();
             String userSchema = rsUser.getString("user_name");
             Integer userId = rsUser.getInt("user_id");
+            String gpsd_dbName = rsUser.getString("dbname");
 
             // Get Max QueryLogId
             //sql = "select max(query_log_id)+1 max_qry_log_id FROM " + haystackSchema + ".query_logs;";
@@ -383,7 +388,8 @@ public class Greenplum extends Cluster {
 
             // Insert record in QUERY_LOG table
             sql = "INSERT INTO " + haystackSchema + ".query_logs(query_log_id, user_id, status, original_file_name," +
-                    " file_checksum,submitted_on, gpsd_id) VALUES (" + maxQryLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH'," +
+                    " file_checksum,submitted_on, gpsd_id) VALUES (" + maxQryLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH HOST=" + super.gpsd_Credentials.getHostName() +
+                    " Database=" + gpsd_dbName + "'," +
                     " '" + maxQryLogId + "=' || now(), now()," + clusterId + " );";
             haystackDBConn.execNoResultSet(sql);
 
@@ -401,7 +407,7 @@ public class Greenplum extends Cluster {
 
             sql = "SELECT distinct(logsessiontime::date)\n" +
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
-                    "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL and logsessiontime > '" + lastRefreshTime + "' " +
+                    "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase = '" + gpsd_dbName + "'  and logsessiontime > '" + lastRefreshTime + "' " +
                     "\t\tAND length(logdebug) > 0;";
 
             ResultSet rsDates = dbConn.execQuery(sql);
@@ -439,7 +445,7 @@ public class Greenplum extends Cluster {
             sql = "SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,\n" +
                     "                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql\n" +
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
-                    "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase IS NOT NULL and logsessiontime > '" + lastRefreshTime + "' " +
+                    "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase ='" + gpsd_dbName + "' and logsessiontime > '" + lastRefreshTime + "' " +
                     "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid\n" +
                     "\t\tHAVING length(min(logdebug)) > 0";
 
@@ -467,7 +473,7 @@ public class Greenplum extends Cluster {
                 }
                 // Escape Quote in SQL Statement
                 String logdebug = rs.getString(10);
-                String escapedQuery = logdebug.replace("'", "\\'");
+                String escapedQuery = logdebug.replace("'", "\\\\'").trim();
 
                 try {
                     String sQryType = this.getQueryType(escapedQuery);

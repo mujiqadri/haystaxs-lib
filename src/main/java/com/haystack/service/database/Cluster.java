@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -36,7 +37,7 @@ public abstract class Cluster {
 
     protected DBConnectService dbConn;
     DBConnectService haystackDBConn = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
-
+    protected Credentials gpsd_Credentials;
 
     protected final Logger log = LoggerFactory.getLogger(Cluster.class.getName());
 
@@ -44,6 +45,7 @@ public abstract class Cluster {
         try {
             dbConn = new DBConnectService(dbtype);
             dbConn.connect(credentials);
+            gpsd_Credentials = credentials;
         } catch (Exception e) {
             log.error("Error connecting to cluster, " + credentials.toString() + " Exception:" + e.toString());
             return false;
@@ -78,6 +80,13 @@ public abstract class Cluster {
         Statement statement = null;
         try {
             try {
+
+                //query = query.trim();
+                // Remove \\ double backslash from the input to avoid CCJSqlParser lexical error
+                //if (query.contains("\\")) {
+                //    String sTrimmedQry = query.replaceAll("\\\\", "");
+                //    query = sTrimmedQry;
+                //}
                 statement = CCJSqlParserUtil.parse(query);
                 Select selectStatement = null;
 
@@ -108,9 +117,10 @@ public abstract class Cluster {
     }
 
     private void persistAST(String userSchemaName, Integer queryId, String jsonAST) {
+        String sql = "";
         try {
 
-            String sql = "select count(*) as cnt_rows from " + userSchemaName + ".ast_queries where queries_id =" + queryId + ";";
+            sql = "select count(*) as cnt_rows from " + userSchemaName + ".ast_queries where queries_id =" + queryId + ";";
             ResultSet rsCnt = haystackDBConn.execQuery(sql);
             rsCnt.next();
 
@@ -131,23 +141,30 @@ public abstract class Cluster {
                     rsASTId.next();
                     astID = rsASTId.getInt(1);
 
-                    sql = "insert into " + userSchemaName + ".ast(ast_id, ast_json, checksum) values(" + astID + ",'" + jsonAST + "','" + jsonMD5 + "');";
-                    haystackDBConn.execNoResultSet(sql);
-                    // Get new generated AST_ID
-                    /*sql = "select max(ast_id) as ast_id from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "'";
-                    ResultSet rsASTId = haystackDBConn.execQuery(sql);
-                    rsASTId.next();
-                    astID = rsASTId.getInt("ast_id");
-                    */
+                    PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchemaName + ".ast( ast_id, "
+                            + " ast_json, checksum) VALUES(?,?,?)");
+
+                    statement.setInt(1, astID);
+                    statement.setString(2, jsonAST);
+                    statement.setString(3, jsonMD5);
+                    statement.executeUpdate();
+
                 }
                 sql = "select nextval('" + userSchemaName + ".seq_ast_queries')";
                 rsAST = haystackDBConn.execQuery(sql);
                 rsAST.next();
                 Integer ast_query_id = rsAST.getInt(1);
-                sql = "insert into " + userSchemaName + ".ast_queries(ast_queries_id, queries_id, ast_json,checksum,ast_id) values(" + ast_query_id + "," +
-                        queryId + ",'" + jsonAST + "','" + jsonMD5 + "'," + astID + ");";
-                haystackDBConn.execNoResultSet(sql);
-                // Update the AST in the queryies_ast table and the Unique AST Table
+
+                PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchemaName + ".ast_queries( ast_queries_id, "
+                        + " queries_id, ast_json, checksum,ast_id ) VALUES(?,?,?,?,?)");
+
+                statement.setInt(1, ast_query_id);
+                statement.setInt(2, queryId);
+                statement.setString(3, jsonAST);
+                statement.setString(4, jsonMD5);
+                statement.setInt(5, astID);
+                statement.executeUpdate();
+
             }
         } catch (Exception e) {
             log.error("Error in persisting AST for queryID:" + queryId);
