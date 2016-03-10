@@ -312,7 +312,7 @@ import java.util.Properties;
                         throw new Exception("Cluster Type Invalid");
                 }
                 tablelist = cluster.loadTables(clusterCred, isGPSD);
-                cluster.saveGpsdStats(gpsd_id, tablelist);
+                // cluster.saveGpsdStats(gpsd_id, tablelist);
             }
 
         } catch (Exception e) {

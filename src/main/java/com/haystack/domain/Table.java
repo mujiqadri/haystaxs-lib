@@ -93,25 +93,32 @@ public class Table {
     }
     // TODO Extract ordinal position from dkArray and set dk from columns;
     public void setDistributionKey(){
-        if (dkArray.equals("NONE")){
-            return;
-        }
-        String splitArr[] = dkArray.split(",");
-        for( int i=0; i < splitArr.length; i++){
-            Integer currAttrPos = Integer.parseInt(splitArr[i]);
+        try {
+            if (dkArray.equals("NONE")) {
+                return;
+            }
+            if (dkArray.equals("RANDOM")) {
+                return;
+            }
+            String splitArr[] = dkArray.split(",");
+            for (int i = 0; i < splitArr.length; i++) {
+                Integer currAttrPos = Integer.parseInt(splitArr[i]);
 
-            Iterator<Map.Entry<String, Column>> entries = columns.entrySet().iterator();
-            while(entries.hasNext()){
-                Map.Entry<String, Column> entry = entries.next();
-                Column currColumn = entry.getValue();
+                Iterator<Map.Entry<String, Column>> entries = columns.entrySet().iterator();
+                while (entries.hasNext()) {
+                    Map.Entry<String, Column> entry = entries.next();
+                    Column currColumn = entry.getValue();
 
-                if (currColumn.ordinal_position == currAttrPos){
-                    currColumn.isDK = true;
-                    dk.put(entry.getKey(),currColumn);
-                    columns.put(entry.getKey(),currColumn);
-                    break;
+                    if (currColumn.ordinal_position == currAttrPos) {
+                        currColumn.isDK = true;
+                        dk.put(entry.getKey(), currColumn);
+                        columns.put(entry.getKey(), currColumn);
+                        break;
+                    }
                 }
             }
+        } catch (Exception e) {
+            throw e;
         }
     }
 

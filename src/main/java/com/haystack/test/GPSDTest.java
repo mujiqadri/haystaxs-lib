@@ -58,17 +58,6 @@ public class GPSDTest extends TestCase {
         System.out.print("test finished");
     }
 
-    public void testWorkload() throws Exception {
-        Integer workloadId = 7;   // 35 for tpc-ds, 20 for citi queries
 
-        ConfigProperties configProperties = new ConfigProperties();
-
-        configProperties.loadProperties();
-
-        CatalogService catalogService = new CatalogService(configProperties);
-
-        String result = catalogService.processWorkload(workloadId);
-        System.out.print("test finished");
-    }
 
 }

@@ -235,10 +235,8 @@ public class CatalogService {
                         nQry = removeScatterBy(nQry);
 
                         try {
-                            String jsonAST = ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
-                            if (jsonAST.length() > 0) {
-                                persistAST(schemaName, queryId, jsonAST);
-                            }
+                            ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
+
                         } catch (Exception e) {
                             log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
                         }
@@ -287,56 +285,7 @@ public class CatalogService {
         return null;
     }
 
-    private void persistAST(String userSchemaName, Integer queryId, String jsonAST) {
-        try {
 
-            String sql = "select count(*) as cnt_rows from " + userSchemaName + ".ast_queries where queries_id =" + queryId + ";";
-            ResultSet rsCnt = dbConnect.execQuery(sql);
-            rsCnt.next();
-
-            if (rsCnt.getInt("cnt_rows") == 0) {
-                String jsonMD5 = getMD5(jsonAST);
-
-                // Check if another AST exists with the same MD5
-                sql = "select min(ast_id) as ast_id, count(ast_id) as count_ast from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "';";
-                ResultSet rsAST = dbConnect.execQuery(sql);
-                rsAST.next();
-
-                Integer cntMatchedAST = rsAST.getInt("count_ast");
-                Integer astID = rsAST.getInt("ast_id");
-
-                if (cntMatchedAST == 0) { // No Matching AST found insert new row in schema.ast table and get the new id to save in schema.ast_queries table
-                    sql = "insert into " + userSchemaName + ".ast(ast_json, checksum) values('" + jsonAST + "','" + jsonMD5 + "');";
-                    dbConnect.execNoResultSet(sql);
-                    // Get new generated AST_ID
-                    sql = "select max(ast_id) as ast_id from " + userSchemaName + ".ast where checksum ='" + jsonMD5 + "'";
-                    ResultSet rsASTId = dbConnect.execQuery(sql);
-                    rsASTId.next();
-                    astID = rsASTId.getInt("ast_id");
-                }
-                sql = "insert into " + userSchemaName + ".ast_queries(queries_id, ast_json,checksum,ast_id) values(" + queryId + ",'" + jsonAST + "','" + jsonMD5 + "'," + astID + ");";
-                dbConnect.execNoResultSet(sql);
-                // Update the AST in the queryies_ast table and the Unique AST Table
-            }
-        } catch (Exception e) {
-            log.error("Error in persisting AST for queryID:" + queryId);
-        }
-    }
-
-    public String getMD5(String md5) {
-        try {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-            byte[] array = md.digest(md5.getBytes());
-            StringBuffer sb = new StringBuffer();
-            for (int i = 0; i < array.length; ++i) {
-                sb.append(Integer.toHexString((array[i] & 0xFF) | 0x100).substring(1, 3));
-            }
-            return sb.toString();
-        } catch (java.security.NoSuchAlgorithmException e) {
-            log.error("Error in generating MD5:" + e.toString());
-        }
-        return null;
-    }
 
     private void updatePercentProcessedWorkload(int currProcessingPercent, Integer workloadId) {
         try {

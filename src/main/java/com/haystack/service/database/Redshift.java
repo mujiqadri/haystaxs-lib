@@ -26,5 +26,10 @@ public class Redshift extends Cluster {
 
     }
 
+    @Override
+    protected String getQueryType(String query) {
+        return null;
+    }
+
 
 }

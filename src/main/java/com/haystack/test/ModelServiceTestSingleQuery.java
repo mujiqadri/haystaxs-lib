@@ -2,6 +2,7 @@ package com.haystack.test;
 
 import com.haystack.domain.Tables;
 import com.haystack.parser.util.parserDOM;
+import com.haystack.service.CatalogService;
 import com.haystack.service.ClusterService;
 import com.haystack.service.ModelService;
 import com.haystack.util.ConfigProperties;
@@ -128,5 +129,18 @@ public class ModelServiceTestSingleQuery extends TestCase {
         ClusterService clusterService = new ClusterService(configProperties);
 
         clusterService.refresh(clusterId);
+    }
+
+    public void testWorkload() throws Exception {
+        Integer workloadId = 8;   // 35 for tpc-ds, 20 for citi queries
+
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        CatalogService catalogService = new CatalogService(configProperties);
+
+        String result = catalogService.processWorkload(workloadId);
+        System.out.print("test finished");
     }
 }

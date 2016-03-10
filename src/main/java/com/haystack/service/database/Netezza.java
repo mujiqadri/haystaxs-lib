@@ -17,6 +17,11 @@ public class Netezza extends Cluster {
 
 
     @Override
+    protected String getQueryType(String query) {
+        return null;
+    }
+
+    @Override
     public void loadQueries(Integer clusterId, Timestamp lastRefreshTime) {
 
     }

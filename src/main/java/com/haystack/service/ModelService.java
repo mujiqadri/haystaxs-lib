@@ -330,11 +330,11 @@ public class ModelService {
         return tablelist.getJSON();
     }
 
-    public String processSQL(Integer queryId, Query query, double executionTime, Integer userId, String current_search_path) throws Exception {
-        return processSQL(queryId, query.getQueryText(), executionTime, userId, current_search_path);
+    public void processSQL(Integer queryId, Query query, double executionTime, Integer userId, String current_search_path) throws Exception {
+        processSQL(queryId, query.getQueryText(), executionTime, userId, current_search_path);
     }
 
-    public String processSQL(Integer queryId, String query, double executionTime, Integer userId, String current_search_path) {
+    public void processSQL(Integer queryId, String query, double executionTime, Integer userId, String current_search_path) throws Exception {
         parserDOM currtablesNF = new parserDOM();
 
         String jsonAST = "";
@@ -359,9 +359,7 @@ public class ModelService {
                 // Statement is not a select/update or supported by Parser, store as is;
                 jsonAST = sqls;
                 log.error("ModelService.processSQL() : Error in parsing SQL=" + query.toString());
-                return query;
-                //throw e;
-                // HSException hsException = new HSException("ModelService.processSQL()", "Error in parsing SQL", e.toString(), "SQL=" + query, userId);
+                return;
             }
             Select selectStatement = null;
             Update updateStatement = null;
@@ -373,23 +371,7 @@ public class ModelService {
             try {
                 selectStatement = (Select) statement;
                 stmtType = "SELECT";
-                Select selectObjForJson = new Select();
-                // AST Generation Processing
-                try {
 
-                    selectObjForJson = selectStatement;
-
-                    // Create AST for the query and return it
-                    ASTGenerator astGen = new ASTGenerator();
-
-                    astGen.removeWhereExpressions(selectObjForJson, "1");
-                    jsonAST = getStatementJSON(selectObjForJson);
-
-
-                } catch (Exception e) {
-                    jsonAST = getStatementJSON(selectObjForJson);
-                    log.debug("Error in generating AST for Select Statement or WhereClause not found in Stmt:" + query + " Exception:" + e.toString());
-                }
 
             } catch (Exception e) {
                 log.debug("Not a Select Statement :" + e.toString());
@@ -450,14 +432,13 @@ public class ModelService {
 
 
             log.info("ModelService.processSQL Complete");
-            return jsonAST;
+            return;
         }
         catch(Exception e){
             // Log Parsing Error
             log.error("SQL:" + query);
             log.error("PARSING ERROR:" + e.toString());
-            HSException hsException = new HSException("ModelService.processSQL()", "Unable to Process Query", e.toString(), "SQL=" + query, userId);
-            return jsonAST;
+            throw e;
         }
     }
 
@@ -975,28 +956,4 @@ public class ModelService {
         return retColumn;
     }
 
-    private String getStatementJSON(Select selectStatement) {
-        String json = "";
-        try {
-            GsonBuilder gsonBuilder = new GsonBuilder();
-
-            gsonBuilder.registerTypeAdapter(Double.class, new JsonSerializer<Double>() {
-                @Override
-                public JsonElement serialize(final Double src, final Type typeOfSrc, final JsonSerializationContext context) {
-                    BigDecimal value = BigDecimal.valueOf(src);
-
-                    return new JsonPrimitive(value);
-                }
-            });
-
-            //Gson objGson = gsonBuilder.setPrettyPrinting().create();
-            Gson objGson = gsonBuilder.create();
-            json = objGson.toJson(selectStatement);
-
-        } catch (Exception e) {
-            log.error("Error generating json " + e.toString());
-        }
-
-        return json;
-    }
 }
