@@ -383,7 +383,7 @@ public class Greenplum extends Cluster {
 
             // Insert record in QUERY_LOG table
             sql = "INSERT INTO " + haystackSchema + ".query_logs(query_log_id, user_id, status, original_file_name," +
-                    " file_checksum,created_on, gpsd_id) VALUES (" + maxQryLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH'," +
+                    " file_checksum,submitted_on, gpsd_id) VALUES (" + maxQryLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH'," +
                     " '" + maxQryLogId + "=' || now(), now()," + clusterId + " );";
             haystackDBConn.execNoResultSet(sql);
 
@@ -451,7 +451,7 @@ public class Greenplum extends Cluster {
 
 
             PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchema + ".queries  ( logsession, "
-                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, gpsd_id, qry_type) "
+                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, gpsd_id, qrytype) "
                     + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
             Integer currCounter = 0;
@@ -521,7 +521,7 @@ public class Greenplum extends Cluster {
             sql = "INSERT INTO " + userSchema + ".query_metadata ( type, value) SELECT distinct 'username', loguser FROM " + userSchema + ".queries;";
             haystackDBConn.execNoResultSet(sql);
 
-            sql = "INSERT INTO " + userSchema + ".query_metadata ( type, value) SELECT distinct 'querytype', qry_type FROM " + userSchema + ".queries;";
+            sql = "INSERT INTO " + userSchema + ".query_metadata ( type, value) SELECT distinct 'querytype', qrytype FROM " + userSchema + ".queries;";
             haystackDBConn.execNoResultSet(sql);
 
             // Update gpsd with query refresh date
