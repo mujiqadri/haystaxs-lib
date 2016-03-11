@@ -53,7 +53,7 @@ public abstract class Cluster {
         return true;
     }
 
-    public abstract Tables loadTables(Credentials credentials, Boolean isGPSD);
+    public abstract Tables loadTables(Credentials credentials, Boolean isGPSD, Integer gpsd_id);
 
     public abstract void loadQueries(Integer clusterId, Timestamp lastRefreshTime);
 
@@ -211,34 +211,31 @@ public abstract class Cluster {
         return json;
     }
 
-    public void saveGpsdStats(int gpsdId, Tables tables) {
+    public void saveGpsdStats(int gpsd_Log_Id, Tables tables) {
         try {
             // TODO: This should be kept so that the Schema size can be compared later on..
-            String sql = "delete from " + haystackSchema + ".gpsd_stats where gpsd_id = " + gpsdId;
 
-            // Don't delete gpsd_stats keep it for history
-            // haystackDBConn.execNoResultSet(sql);
 
             for (Table table : tables.tableHashMap.values()) {
                 HashMap<String, Object> mapValues = new HashMap<>();
 
-                mapValues.put("gpsd_id", gpsdId);
+                mapValues.put("gpsd_log_id", gpsd_Log_Id);
                 mapValues.put("schema_name", table.schema);
                 mapValues.put("table_name", table.tableName);
                 mapValues.put("size_in_mb", table.stats.sizeOnDisk * 1024);
                 mapValues.put("no_of_rows", table.stats.noOfRows);
+                mapValues.put("created_on", "now()");
 
                 try {
                     haystackDBConn.insert(haystackSchema + ".gpsd_stats", mapValues);
                 } catch (Exception ex) {
-                    log.error("Error inserting gpsd stats in gpsd_stats table for gpsd_id = " + gpsdId + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
+                    log.error("Error inserting gpsd stats in gpsd_stats table for gpsd_log_id = " + gpsd_Log_Id + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
                     //HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
                 }
             }
-            sql = "update " + haystackSchema + ".gpsd set last_schema_refreshed_on = now () where gpsd_id = " + gpsdId + ";";
-            haystackDBConn.execNoResultSet(sql);
+
         } catch (Exception e) {
-            log.error("Error saving gpsd_stats rows from " + haystackSchema + ".gpsd_stats for gpsd_id = " + gpsdId + " ;Exception:" + e.toString());
+            log.error("Error saving gpsd_stats rows from " + haystackSchema + ".gpsd_stats for gpsd_log_id = " + gpsd_Log_Id + " ;Exception:" + e.toString());
         }
     }
 
@@ -260,7 +257,7 @@ public abstract class Cluster {
             rsCount = haystackDBConn.execQuery(sql);
             rsCount.next();
             if (rsCount.getInt("count") == 0) { // Create AST Table
-                sql = "CREATE TABLE " + userSchema + ".ast ( ast_id int primary key , ast_json text, checksum text);";
+                sql = "CREATE TABLE " + userSchema + ".ast ( ast_id int primary key , ast_json text, checksum text, count int, total_duration bigint);";
                 haystackDBConn.execNoResultSet(sql);
                 sql = "CREATE SEQUENCE " + userSchema + ".seq_ast INCREMENT 1 MINVALUE 1 MAXVALUE 9223372036854775807 START 1 CACHE 1;";
                 haystackDBConn.execNoResultSet(sql);

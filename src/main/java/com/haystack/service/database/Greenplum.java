@@ -39,14 +39,41 @@ public class Greenplum extends Cluster {
 
 
     @Override
-    public Tables loadTables(Credentials credentials, Boolean isGPSD) {
+    public Tables loadTables(Credentials credentials, Boolean isGPSD, Integer gpsd_id) {
 
         Tables tables = new Tables();
 
+        Integer maxGPSDLogId = 0;
         String jsonResult = "";
         try {
             dbConn = new DBConnectService(this.dbtype);
             dbConn.connect(credentials);
+
+            String sql = "select user_name, B.user_id, C.dbname\n" +
+                    "from " + haystackSchema + ".gpsd_users A, " + haystackSchema + ".users B, " + haystackSchema + ".gpsd C\n" +
+                    "where A.user_id = B.user_id and is_default = true \n" +
+                    "and A.gpsd_id = C.gpsd_id\n" +
+                    "and A.gpsd_id = " + gpsd_id;
+
+            ResultSet rsUser = haystackDBConn.execQuery(sql);
+            rsUser.next();
+            String userSchema = rsUser.getString("user_name");
+            Integer userId = rsUser.getInt("user_id");
+            String gpsd_dbName = rsUser.getString("dbname");
+
+            // Get Max GPSDLogId
+            sql = "select nextval('" + haystackSchema + ".seq_gpsd_log');";
+            ResultSet rsGPSDLogId = haystackDBConn.execQuery(sql);
+            rsGPSDLogId.next();
+
+            maxGPSDLogId = rsGPSDLogId.getInt(1);
+
+            // Insert record in QUERY_LOG table
+            sql = "INSERT INTO " + haystackSchema + ".gpsd_logs(gpsd_log_id, user_id, status, original_file_name," +
+                    " file_checksum,submitted_on, gpsd_id) VALUES (" + maxGPSDLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH HOST=" + credentials.getHostName() +
+                    " Database=" + credentials.getDatabase() + "'," +
+                    " '" + maxGPSDLogId + "=' || now(), now()," + gpsd_id + " );";
+            haystackDBConn.execNoResultSet(sql);
 
             String sqlTbl = "\t\tSELECT tbl.oid as table_oid, sch.nspname as schema_name, relname as table_name,\n" +
                     // Changed Muji 23Jan 2016 :tbl.reltuples::bigint
@@ -85,10 +112,30 @@ public class Greenplum extends Cluster {
                     "\t\tand relname not like  'es1_%'\n" +
                     "\t\tand ((tbl.relpages > 0 ) OR (tbl.relpages = 0 and par.tablename is not null))\n" +
                     "\t\t--AND tbl.relchecks = 0\n" +
-                    "\t\torder by 3 -- desc\n";
+                    "\t\torder by 4 desc\n";
+
+            // Count Rows to Update Progress
+
+            ResultSet rsCountQueries = dbConn.execQuery("SELECT COUNT(*) FROM (" + sqlTbl + ") AS X;");
+            rsCountQueries.next();
+            Integer totalNoOfQueries = rsCountQueries.getInt(1);
+
             ResultSet rsTbl = dbConn.execQuery(sqlTbl);
 
+            Integer currCounter = 0;
+            Integer lastPercentageUpdated = -1;
+
+
             while (rsTbl.next()) {   // Fetch all parent level tables, if table is partitioned then load all Partitions
+                currCounter++;
+
+                Integer currPercentage = (currCounter * 100 / totalNoOfQueries);
+                if (currPercentage > lastPercentageUpdated) {
+                    sql = "UPDATE " + haystackSchema + ".gpsd_logs SET last_updated = now(), percent_processed = " + currPercentage + " where gpsd_log_id = " + maxGPSDLogId + ";";
+                    haystackDBConn.execNoResultSet(sql);
+                    lastPercentageUpdated = currPercentage;
+                }
+
                 Table tbl = new Table();
                 try {
                     tbl.oid = rsTbl.getString("table_oid");
@@ -216,6 +263,23 @@ public class Greenplum extends Cluster {
                 }
             }
             rsTbl.close();
+
+            // Check if last gpsd_refresh_time is greater than interval
+            sql = "select coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on , now() as current_time  from " + haystackSchema +
+                    ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id + ";";
+            ResultSet rs = dbConn.execQuery(sql);
+            Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
+            Timestamp currentTime = rs.getTimestamp("current_time");
+            Integer schemaRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("schema.refresh.interval.hours"));
+            lastSchemaRefreshTime.setTime(lastSchemaRefreshTime.getTime() + (schemaRefreshIntervalHours * 60 * 60 * 1000));
+            if (lastSchemaRefreshTime.compareTo(currentTime) < 0) {// if this time is less than current_time, if yes then refresh schema
+                super.saveGpsdStats(maxGPSDLogId, tables);
+                sql = "update " + haystackSchema + ".gpsd set last_schema_refreshed_on = now () where gpsd_id = " + gpsd_id + ";";
+                haystackDBConn.execNoResultSet(sql);
+            }
+            sql = "UPDATE " + haystackSchema + ".gpsd_logs SET status = 'COMPLETED', completed_on = now() where gpsd_log_id = " + maxGPSDLogId + ";";
+            haystackDBConn.execNoResultSet(sql);
+
         } catch (Exception e) {
             log.error("Error in loading tables from Stats" + e.toString());
         }
@@ -408,7 +472,7 @@ public class Greenplum extends Cluster {
             sql = "SELECT distinct(logsessiontime::date)\n" +
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
                     "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase = '" + gpsd_dbName + "'  and logsessiontime > '" + lastRefreshTime + "' " +
-                    "\t\tAND length(logdebug) > 0;";
+                    "\t\tAND length(logdebug) > 0 AND logdebug not like '%pg_class%';";
 
             ResultSet rsDates = dbConn.execQuery(sql);
 
@@ -445,7 +509,8 @@ public class Greenplum extends Cluster {
             sql = "SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,\n" +
                     "                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql\n" +
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
-                    "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase ='" + gpsd_dbName + "' and logsessiontime > '" + lastRefreshTime + "' " +
+                    "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase ='" + gpsd_dbName + "' and logsessiontime > '" + lastRefreshTime + "' "
+                    + " AND logdebug not like '%pg_class%'" +
                     "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid\n" +
                     "\t\tHAVING length(min(logdebug)) > 0";
 
@@ -506,6 +571,16 @@ public class Greenplum extends Cluster {
             }
             rs.close();
 
+            // Calculate AST Summary Stats
+            sql = "update " + userSchema + ".ast \n" +
+                    "set count = X.count, total_duration = X.total_duration\n" +
+                    "FROM \n" +
+                    "\t(select ast_id, count(*) as count , sum(extract(epoch from C.logduration)) as total_duration\n" +
+                    "\tfrom " + userSchema + ".ast_queries B, " + userSchema + ".queries C\n" +
+                    "\twhere B.queries_id = C.id \n" +
+                    "\tgroup by ast_id ) X\n" +
+                    "WHERE ast.ast_id = X.ast_id;";
+            haystackDBConn.execNoResultSet(sql);
 
             // Update Query Count and Sum Duration for Each Date for this QueryLogId
             sql = "UPDATE " + haystackSchema + ".query_log_dates set query_count = X.query_count, sum_duration = X.sum_duration " +

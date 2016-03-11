@@ -176,8 +176,7 @@ import java.util.Properties;
                     Integer schemaRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("schema.refresh.interval.hours"));
                     lastSchemaRefreshTime.setTime(lastSchemaRefreshTime.getTime() + (schemaRefreshIntervalHours * 60 * 60 * 1000));
                     if (lastSchemaRefreshTime.compareTo(currentTime) < 0) {// if this time is less than current_time, if yes then refresh schema
-                        Tables tables = cluster.loadTables(clusterCred, isGPSD);
-                        cluster.saveGpsdStats(clusterId, tables);
+                        Tables tables = cluster.loadTables(clusterCred, isGPSD, clusterId);
                     }
                 } catch (Exception e) {
                     log.error("Error in refreshing cluster gpsd_id= " + clusterId + " Exception=" + e.toString());
@@ -311,7 +310,7 @@ import java.util.Properties;
                     default:
                         throw new Exception("Cluster Type Invalid");
                 }
-                tablelist = cluster.loadTables(clusterCred, isGPSD);
+                tablelist = cluster.loadTables(clusterCred, isGPSD, clusterId);
                 // cluster.saveGpsdStats(gpsd_id, tablelist);
             }
 

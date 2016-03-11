@@ -27,7 +27,7 @@ public class Netezza extends Cluster {
     }
 
     @Override
-    public Tables loadTables(Credentials credentials, Boolean isGPSD) {
+    public Tables loadTables(Credentials credentials, Boolean isGPSD, Integer gpsdId) {
         return null;
     }
 

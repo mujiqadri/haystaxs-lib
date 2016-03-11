@@ -16,7 +16,7 @@ public class Redshift extends Cluster {
         this.dbtype = DBConnectService.DBTYPE.REDSHIFT;
     }
     @Override
-    public Tables loadTables(Credentials credentials, Boolean isGPSD) {
+    public Tables loadTables(Credentials credentials, Boolean isGPSD, Integer gpsd_Id) {
         return null;
     }
 

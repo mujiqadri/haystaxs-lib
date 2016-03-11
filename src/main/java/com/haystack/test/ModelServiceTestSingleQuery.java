@@ -119,7 +119,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     public void testRefresh() throws Exception {
 
 
-        Integer clusterId = 36;
+        Integer clusterId = 37;
 
 
         ConfigProperties configProperties = new ConfigProperties();
@@ -132,7 +132,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
 
     public void testWorkload() throws Exception {
-        Integer workloadId = 8;   // 35 for tpc-ds, 20 for citi queries
+        Integer workloadId = 9;   // 35 for tpc-ds, 20 for citi queries
 
         ConfigProperties configProperties = new ConfigProperties();
 

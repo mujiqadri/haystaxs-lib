@@ -248,16 +248,6 @@ public class CatalogService {
 
             rsQry.close();
 
-            // Calculate AST Summary Stats
-            sql = "update tpcds_at_gmail_dot_com.ast \n" +
-                    "set count = X.count, total_duration = X.total_duration\n" +
-                    "FROM \n" +
-                    "\t(select ast_id, count(*) as count , sum(extract(epoch from C.logduration)) as total_duration\n" +
-                    "\tfrom tpcds_at_gmail_dot_com.ast_queries B, tpcds_at_gmail_dot_com.queries C\n" +
-                    "\twhere B.queries_id = C.id \n" +
-                    "\tgroup by ast_id ) X\n" +
-                    "WHERE ast.ast_id = X.ast_id;";
-            dbConnect.execNoResultSet(sql);
 
             ms.scoreModel();
             ms.generateRecommendations();
