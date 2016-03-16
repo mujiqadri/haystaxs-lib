@@ -432,7 +432,7 @@ public class Greenplum extends Cluster {
         try {
             sql = "select user_name, B.user_id, C.dbname\n" +
                     "from " + haystackSchema + ".gpsd_users A, " + haystackSchema + ".users B, " + haystackSchema + ".gpsd C\n" +
-                    "where A.user_id = B.user_id and is_default = true \n" +
+                    "where A.user_id = B.user_id \n" +
                     "and A.gpsd_id = C.gpsd_id\n" +
                     "and A.gpsd_id = " + clusterId;
 

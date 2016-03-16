@@ -78,6 +78,7 @@ public abstract class Cluster {
     public void generateAST(Integer queryId, String query, String userSchema) {
         String jsonAST = "";
         Statement statement = null;
+        Boolean is_json = true;
         try {
             try {
 
@@ -101,11 +102,13 @@ public abstract class Cluster {
                     ASTGenerator astGen = new ASTGenerator();
                     astGen.removeWhereExpressions(selectObjForJson, "1");
                     jsonAST = getStatementJSON(selectObjForJson);
+                    is_json = true;
                 }
 
             } catch (TokenMgrError e) {
                 // Statement is not a select/update or supported by Parser, store as is;
                 jsonAST = query;
+                is_json = false;
             }
 
         } catch (JSQLParserException e) {
@@ -113,10 +116,10 @@ public abstract class Cluster {
         }
 
         // AST JSON Is generated now PersistAST
-        persistAST(userSchema, queryId, jsonAST);
+        persistAST(userSchema, queryId, jsonAST, is_json);
     }
 
-    private void persistAST(String userSchemaName, Integer queryId, String jsonAST) {
+    private void persistAST(String userSchemaName, Integer queryId, String jsonAST, Boolean is_json) {
         String sql = "";
         try {
 
@@ -142,11 +145,12 @@ public abstract class Cluster {
                     astID = rsASTId.getInt(1);
 
                     PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchemaName + ".ast( ast_id, "
-                            + " ast_json, checksum) VALUES(?,?,?)");
+                            + " ast_json, checksum, is_json) VALUES(?,?,?,?)");
 
                     statement.setInt(1, astID);
                     statement.setString(2, jsonAST);
                     statement.setString(3, jsonMD5);
+                    statement.setBoolean(4, is_json);
                     statement.executeUpdate();
 
                 }
@@ -257,7 +261,7 @@ public abstract class Cluster {
             rsCount = haystackDBConn.execQuery(sql);
             rsCount.next();
             if (rsCount.getInt("count") == 0) { // Create AST Table
-                sql = "CREATE TABLE " + userSchema + ".ast ( ast_id int primary key , ast_json text, checksum text, count int, total_duration bigint);";
+                sql = "CREATE TABLE " + userSchema + ".ast ( ast_id int primary key , ast_json text, checksum text, count int, total_duration bigint, is_json boolean);";
                 haystackDBConn.execNoResultSet(sql);
                 sql = "CREATE SEQUENCE " + userSchema + ".seq_ast INCREMENT 1 MINVALUE 1 MAXVALUE 9223372036854775807 START 1 CACHE 1;";
                 haystackDBConn.execNoResultSet(sql);

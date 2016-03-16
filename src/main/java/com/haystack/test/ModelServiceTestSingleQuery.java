@@ -119,7 +119,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     public void testRefresh() throws Exception {
 
 
-        Integer clusterId = 37;
+        Integer clusterId = 36;
 
 
         ConfigProperties configProperties = new ConfigProperties();
