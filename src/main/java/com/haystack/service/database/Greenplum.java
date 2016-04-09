@@ -267,7 +267,8 @@ public class Greenplum extends Cluster {
             // Check if last gpsd_refresh_time is greater than interval
             sql = "select coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on , now() as current_time  from " + haystackSchema +
                     ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id + ";";
-            ResultSet rs = dbConn.execQuery(sql);
+            ResultSet rs = haystackDBConn.execQuery(sql);
+            rs.next();
             Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
             Timestamp currentTime = rs.getTimestamp("current_time");
             Integer schemaRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("schema.refresh.interval.hours"));
