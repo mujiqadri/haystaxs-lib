@@ -7,6 +7,7 @@ import com.haystack.parser.JSQLParserException;
 import com.haystack.parser.parser.CCJSqlParserUtil;
 import com.haystack.parser.parser.TokenMgrError;
 import com.haystack.parser.statement.Statement;
+import com.haystack.parser.statement.insert.Insert;
 import com.haystack.parser.statement.select.Select;
 import com.haystack.parser.statement.update.Update;
 import com.haystack.parser.util.ASTGenerator;
@@ -14,10 +15,13 @@ import com.haystack.parser.util.IntTypeAdapter;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.plaf.nimbus.State;
+import javax.swing.text.StyledEditorKit;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -75,49 +79,332 @@ public abstract class Cluster {
         }
     }
 
+    /*
+        private String trimWhiteSpace(String input){
+            String output = input.trim().toLowerCase();
+            output = output.replace("\n")
+        }
+        */
+    public void generateAST2(Integer queryId, String query, String userSchema) {
+
+        String ret = null;
+        String left = "";
+        Boolean isWhere = false;
+
+        try {
+            query = query.trim().toLowerCase().replace("\\\\", "");
+            StringTokenizer st = new StringTokenizer(query, " \n\t()", true);
+
+            while (st.hasMoreTokens()) {
+
+                String token = st.nextToken();
+
+                while (isDelim(token) || isWhitespace(token)) {
+                    if (isDelim(token))
+                        left += token;
+                    token = st.nextToken();
+                }
+                left += " " + token;
+                if (token.contains("where")) {
+                    isWhere = true;
+                    while (isWhere) {
+
+                        String currToken = st.nextToken();
+                        while (isDelim(currToken) || isWhitespace(currToken)) {
+                            if (isDelim(currToken))
+                                left += currToken;
+                            currToken = st.nextToken();
+                        }
+                        left += " " + currToken;
+                        String leftExp = currToken;
+                        String condition = "";
+
+                        currToken = st.nextToken();
+                        while (isDelim(currToken) || isWhitespace(currToken)) {
+                            if (isDelim(currToken))
+                                left += currToken;
+                            currToken = st.nextToken();
+                        }
+                        left += " " + currToken;
+                        if (isCondition(currToken)) {
+                            Boolean found = false;
+                            if (currToken.equals("!~")) {  // For debugging Only
+                                currToken = currToken;
+                            }
+                            if (currToken.equals("is")) {
+                                currToken = st.nextToken();
+                                while (isDelim(currToken) || isWhitespace(currToken)) {
+                                    if (isDelim(currToken))
+                                        left += currToken;
+                                    currToken = st.nextToken();
+                                }
+                                if (currToken.equals("not")) {
+                                    found = false;
+                                } else {
+                                    found = true;
+                                }
+                            }
+                            if (!found) {
+                                currToken = st.nextToken();
+                                while (isDelim(currToken) || isWhitespace(currToken)) {
+                                    if (isDelim(currToken))
+                                        left += currToken;
+                                    currToken = st.nextToken();
+                                }
+                            }
+                            String rightExt = currToken;
+                            //  Check if right expression is not a join condition and is a literal
+                            if (isJoinCondition(rightExt)) {
+                                left += " " + rightExt;
+                            } else {
+                                left += " ™";
+                            }
+                            // Check if next token is where condition joiner
+                            if (st.hasMoreTokens()) {
+                                currToken = st.nextToken();
+                            } else {
+                                break;
+                            }
+                            while (isDelim(currToken) || isWhitespace(currToken)) {
+                                if (isDelim(currToken))
+                                    left += currToken;
+                                if (st.hasMoreTokens()) {
+                                    currToken = st.nextToken();
+                                } else {
+                                    break;
+                                }
+                            }
+                            left += " " + currToken;
+                            if (isThereAnotherWhereExpr(currToken)) {
+                                isWhere = true;
+                            } else {
+                                isWhere = false;
+                            }
+
+                        } else {
+                            switch (currToken) {
+                                case "in":
+                                    isWhere = false;
+                                    break;
+                                case "group":
+                                    isWhere = false;
+                                    break;
+                                case "order":
+                                    isWhere = false;
+                                    break;
+                                case "limit":
+                                    isWhere = false;
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("ASTGenerator2: Ran out of tokens=" + e.toString());
+        }
+        // AST JSON Is generated now PersistAST
+        persistAST(userSchema, queryId, left, false);
+    }
+
+    private Boolean isThereAnotherWhereExpr(String token) {
+        switch (token) {
+            case "and":
+                return true;
+            case "or":
+                return true;
+        }
+        return false;
+    }
+
+    private Boolean isJoinCondition(String rightExp) {
+        rightExp = rightExp.trim();
+
+        if (isStringLiteral(rightExp)) {
+            return false;
+        }
+        if (isNumber(rightExp)) {
+            return false;
+        }
+        if (isParameter(rightExp)) {
+            return false;
+        }
+        return true;
+    }
+
+    private String collapseDelimOrWhiteSpace(String token) {
+        if (isDelim(token))
+            return token;
+        if (isWhitespace(token))
+            return "";
+        else
+            return "™";
+    }
+
+    private Boolean isParameter(String rightExp) {
+        if (rightExp.charAt(0) == '$') {
+            return true;
+        }
+        return false;
+    }
+
+    private Boolean isStringLiteral(String token) {
+        int start = token.indexOf("'");
+        if (start > -1) {
+            int end = token.indexOf("'", start + 1);
+            if (end > -1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Boolean isNumber(String token) {
+        Boolean result = true;
+        for (int i = 0; i < token.length(); i++) {
+            char currChar = token.charAt(i);
+            switch (currChar) {
+                case '0':
+                    break;
+                case '1':
+                    break;
+                case '2':
+                    break;
+                case '3':
+                    break;
+                case '4':
+                    break;
+                case '5':
+                    break;
+                case '6':
+                    break;
+                case '7':
+                    break;
+                case '8':
+                    break;
+                case '9':
+                    break;
+                case '.':
+                    break;
+                case '-':
+                    break;
+                case 'E':
+                    break;
+                default:
+                    return false;
+            }
+        }
+        return result;
+    }
+
+    private Boolean isCondition(String token) {
+        switch (token) {
+            case "=":
+                return true;
+            case "<":
+                return true;
+            case ">":
+                return true;
+            case "!=":
+                return true;
+            case "!~":
+                return true;
+            case "is":
+                return true;
+            case "like":
+                return true;
+
+        }
+        return false;
+    }
+
+    private Boolean isDelim(String token) {
+        Boolean res = false;
+        switch (token) {
+            case ")":
+                return true;
+            case "(":
+                return true;
+            case ",":
+                return true;
+            case "|":
+                return true;
+
+        }
+        return false;
+    }
+
+    private Boolean isWhitespace(String token) {
+        Boolean res = false;
+        switch (token) {
+            case " ":
+                return true;
+            case "\n":
+                return true;
+            case "\t":
+                return true;
+        }
+        return false;
+    }
+
     public void generateAST(Integer queryId, String query, String userSchema) {
         String jsonAST = "";
         Statement statement = null;
         Boolean is_json = true;
+        Boolean isProcessed = false;
         try {
             try {
 
-                //query = query.trim();
+                query = query.trim();
                 // Remove \\ double backslash from the input to avoid CCJSqlParser lexical error
-                //if (query.contains("\\")) {
-                //    String sTrimmedQry = query.replaceAll("\\\\", "");
-                //    query = sTrimmedQry;
-                //}
-                statement = CCJSqlParserUtil.parse(query);
-                Select selectStatement = null;
-
+                if (query.contains("\\")) {
+                    // Check if query has E\\
+                    String sTrimmedQry = query.replaceAll("\\\\", "");
+                    query = sTrimmedQry;
+                }
+                try {
+                    statement = CCJSqlParserUtil.parse(query);
+                } catch (TokenMgrError te) {
+                    te = te;
+                }
                 if (statement == null) {
                     jsonAST = query;
                 } else {
-                    selectStatement = (Select) statement;
-                    Select selectObjForJson = new Select();
-                    // AST Generation Processing
-                    selectObjForJson = selectStatement;
-                    // Create AST for the query and return it
-                    ASTGenerator astGen = new ASTGenerator();
-                    astGen.removeWhereExpressions(selectObjForJson, "1");
-                    jsonAST = getStatementJSON(selectObjForJson);
-                    is_json = true;
+                    try {
+                        Select selectStatement = null;
+                        selectStatement = (Select) statement;
+                        ASTGenerator astGen = new ASTGenerator();
+                        astGen.removeWhereExpressions(selectStatement, "1");
+                        jsonAST = getStatementJSON(selectStatement);
+                        is_json = true;
+                    } catch (ClassCastException ce) {
+                        isProcessed = false;
+                    }
+
+                    if (isProcessed == false) {
+                        Insert insertStatement = null;
+                        insertStatement = (Insert) statement;
+                        ASTGenerator astGen = new ASTGenerator();
+                        astGen.removeWhereExpressions(insertStatement, "1");
+                        jsonAST = getStatementJSON(insertStatement);
+                        is_json = true;
+                    }
                 }
 
-            } catch (TokenMgrError e) {
+            } catch (Exception e) {
                 // Statement is not a select/update or supported by Parser, store as is;
                 jsonAST = query;
                 is_json = false;
             }
 
-        } catch (JSQLParserException e) {
+        } catch (Exception e) {
             jsonAST = query;
         }
 
         // AST JSON Is generated now PersistAST
         persistAST(userSchema, queryId, jsonAST, is_json);
     }
+
 
     private void persistAST(String userSchemaName, Integer queryId, String jsonAST, Boolean is_json) {
         String sql = "";
@@ -190,7 +477,7 @@ public abstract class Cluster {
         return null;
     }
 
-    private String getStatementJSON(Select selectStatement) {
+    private String getStatementJSON(Statement statement) {
         String json = "";
         try {
             GsonBuilder gsonBuilder = new GsonBuilder();
@@ -206,7 +493,7 @@ public abstract class Cluster {
 
             //Gson objGson = gsonBuilder.setPrettyPrinting().create();
             Gson objGson = gsonBuilder.create();
-            json = objGson.toJson(selectStatement);
+            json = objGson.toJson(statement);
 
         } catch (Exception e) {
             log.error("Error generating json " + e.toString());
@@ -286,7 +573,7 @@ public abstract class Cluster {
             if (rsCount.getInt("count") == 0) { // Create Queries Table
                 sql = "CREATE TABLE " + userSchema + ".queries ( id int ,logsession text,logcmdcount text, logdatabase text," +
                         "loguser text,logpid text,logsessiontime timestamp with time zone,logtimemin timestamp with time zone, " +
-                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text, gpsd_id integer );";
+                        " logtimemax timestamp with time zone,logduration interval,sql text,qrytype text, gpsd_id integer , query_log_id integer );";
                        /* " PARTITION BY RANGE(logsessiontime) ( START (date '1900-01-01') INCLUSIVE END ( date '1900-01-02') EXCLUSIVE\n" +
                         " EVERY (INTERVAL '1 day'));";
                         */

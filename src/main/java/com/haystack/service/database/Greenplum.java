@@ -511,6 +511,8 @@ public class Greenplum extends Cluster {
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
                     "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase ='" + gpsd_dbName + "' and logsessiontime > '" + lastRefreshTime + "' "
                     + " AND logdebug not like '%pg_class%'" +
+                    // TODO Added Where for Debug
+                    //" and lower(logdebug) like '%where%' " +
                     "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid\n" +
                     "\t\tHAVING length(min(logdebug)) > 0";
 
@@ -522,8 +524,8 @@ public class Greenplum extends Cluster {
 
 
             PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchema + ".queries  ( logsession, "
-                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, gpsd_id, qrytype) "
-                    + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, gpsd_id, qrytype, query_log_id) "
+                    + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
             Integer currCounter = 0;
             Integer lastPercentageUpdated = -1;
@@ -561,9 +563,10 @@ public class Greenplum extends Cluster {
                     statement.setInt(11, query_id);
                     statement.setInt(12, clusterId);
                     statement.setString(13, sQryType);
+                    statement.setInt(14, maxQryLogId);
                     statement.executeUpdate();
 
-                    super.generateAST(query_id, escapedQuery, userSchema);
+                    super.generateAST2(query_id, escapedQuery, userSchema);
 
                 } catch (Exception e) {
                     log.error("Exception in processing query SQL='" + escapedQuery + "  Exception=" + e.toString());

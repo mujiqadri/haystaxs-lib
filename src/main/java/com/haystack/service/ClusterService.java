@@ -163,7 +163,8 @@ import java.util.Properties;
                     if (!connectSuccess) { // Set IsActive = false for this gpsd_id, so that we donot try to connect it each time
                         sql = "UPDATE " + haystackSchema + ".gpsd set is_active = false where gpsd_id = " + clusterId + ";";
                         //TODO Add Notification for User - UserInbox
-                        dbConnect.execNoResultSet(sql);
+                        //TODO  Comment out for now, enable when scheduled refresh it done
+                        //dbConnect.execNoResultSet(sql);
                         continue;
                     }
                     Integer queryRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("query.refresh.interval.hours"));

@@ -173,6 +173,20 @@ public class ASTGenerator implements SelectVisitor, FromItemVisitor, ExpressionV
         select.getSelectBody().accept(this, level);
     }
 
+    public void removeWhereExpressions(Insert insert, String level) {
+        try {
+            init();
+            levels.put("0", 1); // Add root element for first level
+            if (insert.getSelect().getWithItemsList() != null) {
+                for (WithItem withItem : insert.getSelect().getWithItemsList()) {
+                    withItem.accept(this, level);
+                }
+            }
+            insert.getSelect().getSelectBody().accept(this, level);
+        } catch (Exception e) {
+            e = e;
+        }
+    }
     /**
      * Main entry for this Tool class. A list of found tables is returned.
      *
