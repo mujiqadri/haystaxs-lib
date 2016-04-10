@@ -221,6 +221,7 @@ public class CatalogService {
                         if (sQry.trim().toLowerCase().startsWith("set search_path") == true) {
                             String[] s1 = sQry.split("=");
                             current_search_path = s1[1].toString().replaceAll("\\s+", "");
+                            continue;
                         }
                         // Remove \\ double backslash from the input to avoid CCJSqlParser lexical error
                         if (sQry.contains("\\")) {

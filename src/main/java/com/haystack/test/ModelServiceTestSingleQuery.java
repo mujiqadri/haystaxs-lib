@@ -115,11 +115,25 @@ public class ModelServiceTestSingleQuery extends TestCase {
         System.out.print(str);
     }
 
+    public void testGetTables() throws Exception {
 
+
+        Integer clusterId = 37;
+
+
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        ClusterService clusterService = new ClusterService(configProperties);
+
+        clusterService.getTables(clusterId);
+        //clusterService.refresh(clusterId);
+    }
     public void testRefresh() throws Exception {
 
 
-        Integer clusterId = 36;
+        Integer clusterId = 37;
 
 
         ConfigProperties configProperties = new ConfigProperties();
@@ -132,7 +146,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
 
     public void testWorkload() throws Exception {
-        Integer workloadId = 9;   // 35 for tpc-ds, 20 for citi queries
+        Integer workloadId = 30;   // 35 for tpc-ds, 20 for citi queries
 
         ConfigProperties configProperties = new ConfigProperties();
 
