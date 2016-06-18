@@ -5,10 +5,26 @@ import com.google.gson.*;
 import com.haystack.domain.*;
 
 
-import com.haystack.parser.parser.TokenMgrError;
-import com.haystack.parser.statement.update.Update;
-import com.haystack.parser.util.ASTGenerator;
+//import com.haystack.parser.parser.TokenMgrError;
+//import com.haystack.parser.statement.update.Update;
+//import com.haystack.parser.util.parserDOM;
+//import com.haystack.parser.parser.CCJSqlParserUtil;
+//import com.haystack.parser.statement.Statement;
+//import com.haystack.parser.statement.select.Select;
+//import com.haystack.parser.util.parserDOM;
+
+import com.haystack.domain.Query;
+import com.haystack.visitor.*;
+import net.sf.jsqlparser.parser.TokenMgrError;
+import net.sf.jsqlparser.statement.update.Update;
 import com.haystack.parser.util.parserDOM;
+import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.Select;
+import com.haystack.parser.util.parserDOM;
+
+import com.haystack.parser.util.ASTGenerator;
+
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
@@ -18,10 +34,6 @@ import com.haystack.util.HSException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.haystack.parser.parser.CCJSqlParserUtil;
-import com.haystack.parser.statement.Statement;
-import com.haystack.parser.statement.select.Select;
-import com.haystack.parser.util.parserDOM;
 
 
 import java.io.IOException;
@@ -537,49 +549,18 @@ public class ModelService {
             List<String> strTableList;
 
             if (stmtType == "SELECT") {
-                strTableList = currtablesNF.getSemantics(selectStatement, "1");
-                if (strTableList.size() > 0) {
-                    QryTable q = new QryTable();
-                    q.tablename = strTableList.get(0).toString();
-                    currtablesNF.tables.add(q);
-                }
+                currtablesNF.getSemantics(selectStatement);
             } else if (stmtType == "UPDATE") {
-                strTableList = currtablesNF.getSemantics(updateStatement, "1");
-                if (strTableList.size() > 0) {
-                    QryTable q = new QryTable();
-                    q.tablename = strTableList.get(0).toString();
-                    currtablesNF.tables.add(q);
-                }
+                currtablesNF.getSemantics(updateStatement);
             } else {
                 log.error("Statement Not Supported :" + statement.toString());
                 //HSException hsException = new HSException("ModelService.processSQL()", "Statement Not Supported", null, "SQL=" + query, userId);
                 throw new Exception("Statement Not Supported :" + statement.toString());
             }
 
-            // === Resolve table schema name if missing
-            for (int i = 0; i < currtablesNF.tables.size(); i++) {
-                String schemaName = "";
-                if (currtablesNF.tables.get(i).schema == null) {
-                    schemaName = tablelist.findSchema(currtablesNF.tables.get(i).tablename, current_search_path);
-                    currtablesNF.tables.get(i).schema = schemaName;
-                }
-                Table tbl = tablelist.findTable(currtablesNF.tables.get(i).schema, currtablesNF.tables.get(i).tablename);
-                if (tbl != null){ // Increment table Usage, if its not a derived table
-                    tbl.stats.incrementUsageFrequency();
-                }
-                log.info("Table Extracted:" + schemaName + "." + currtablesNF.tables.get(i).tablename) ;
-            }
-            // === Resolve column names to original table, where aliases were used or no TableName/Alias specified
-            // === Increment column usage
-            for (int i = 0; i < currtablesNF.columns.size(); i++) {
-                processProjectedColumn(currtablesNF.columns.get(i), currtablesNF, current_search_path);
-            }
-            processConditions(currtablesNF, current_search_path);
-
-            divideTimeAmongstTables(currtablesNF, executionTime);
+            resolve(currtablesNF.queryLevelObj, current_search_path);
 
             log.debug("=============== CONDITIONS EXTRACTED =================");
-
 
             log.info("ModelService.processSQL Complete");
             return;
@@ -592,7 +573,46 @@ public class ModelService {
         }
     }
 
-    private void divideTimeAmongstTables(parserDOM currtablesNF, double executionTime) {
+    public boolean resolve(com.haystack.visitor.Query queryLevelObj, String current_search_path){
+
+        //Resolving tables
+        for (int i = 0; i < queryLevelObj.tables.size(); i++) {
+            String schemaName = "";
+            if (queryLevelObj.tables.get(i).schema == null) {
+                schemaName = tablelist.findSchema(queryLevelObj.tables.get(i).tablename, current_search_path);
+                queryLevelObj.tables.get(i).schema = schemaName;
+            }
+            Table tbl = tablelist.findTable(queryLevelObj.tables.get(i).schema, queryLevelObj.tables.get(i).tablename);
+            if (tbl != null){ // Increment table Usage, if its not a derived table
+                tbl.stats.incrementUsageFrequency();
+            }
+            log.info("Table Extracted:" + schemaName + "." + queryLevelObj.tables.get(i).tablename) ;
+        }
+
+        //Resolving Columns
+        for (int i = 0; i < queryLevelObj.columns.size(); i++) {
+            //TODO:
+            processProjectedColumn(queryLevelObj.columns.get(i), queryLevelObj.tables, current_search_path);
+        }
+
+        //Resolving COnditions
+        processConditions(queryLevelObj, current_search_path);
+
+        //TODO: Ek weekend tayl karna hay
+        //Date: 18/6/2016
+//        divideTimeAmongstTables(queryLevelObj, executionTime);
+
+        Iterator<com.haystack.visitor.Query> subQueriesIterator = queryLevelObj.subQueries.iterator();
+
+        while(subQueriesIterator.hasNext()){
+            com.haystack.visitor.Query currentSubQuery = subQueriesIterator.next();
+            resolve(currentSubQuery, current_search_path);
+        }
+
+        return false;
+    }
+
+    private void divideTimeAmongstTables(com.haystack.visitor.Query queryLevelObj, double executionTime) {
 
         // If Table is columnar then goto A else goto B
         // A) Calculate the number of columns used for each table in the query = NoOfColsUsed
@@ -608,9 +628,9 @@ public class ModelService {
             ArrayList<QryTable> uniqueTblArray = new ArrayList<QryTable>(); // Array of Table to keep Unique Tables done
             // This to ensure that we don't recalculate workload for tables more than one time.
 
-            for (int i = 0; i < currtablesNF.tables.size(); i++) {
+            for (int i = 0; i < queryLevelObj.tables.size(); i++) {
                 Boolean isTableProcessed = false;
-                QryTable qryTbl = currtablesNF.tables.get(i);
+                QryTable qryTbl = queryLevelObj.tables.get(i);
 
                 // Check if table has already been calculated once
                 for (int k = 0; k < uniqueTblArray.size(); k++) {
@@ -631,8 +651,8 @@ public class ModelService {
                     if (currTbl.stats.isColumnar) {
                         Integer tableColUsage = 0;
 
-                        for (int j = 0; j < currtablesNF.columns.size(); j++) {
-                            Attribute attribute = currtablesNF.columns.get(j);
+                        for (int j = 0; j < queryLevelObj.columns.size(); j++) {
+                            Attribute attribute = queryLevelObj.columns.get(j);
                             if (attribute.schema == null || attribute.tableName == null) {
                                 continue; // derived column, move to next one
                             }
@@ -676,12 +696,12 @@ public class ModelService {
         }
     }
 
-    private void processConditions(parserDOM currtablesNF, String current_search_path) {
+    private void processConditions(com.haystack.visitor.Query queryLevelObj, String current_search_path) {
         // === Extract Conditions
         // === If where clause then increment UsageScore for the column
         // === If join condition then connect the two tables together and increment join usage for left and right column
         HashMap<String, Join> localJoinHashmap = new HashMap<String, Join>();
-        for (Condition condition : currtablesNF.conditions) {
+        for (Condition condition : queryLevelObj.conditions) {
             try {
                 // Condition can be where clause or a join condition, separate them and load them into local cache
                 if (condition.isJoin) { // Join Condition
@@ -689,14 +709,14 @@ public class ModelService {
                     Attribute leftAttr = new Attribute();  // Resolve Aliases or Empty Table Names in the Join Conditions
                     leftAttr.tableName = condition.leftTable;
                     leftAttr.name = condition.leftColumn;
-                    leftAttr.level = condition.level;
-                    Column leftColumn = resolveColumnForJoin(leftAttr, currtablesNF, current_search_path);
+//                    leftAttr.level = condition.level;
+                    Column leftColumn = resolveColumnForJoin(leftAttr, queryLevelObj, current_search_path);
 
                     Attribute rightAttr = new Attribute();
                     rightAttr.tableName = condition.rightTable;
                     rightAttr.name = condition.rightColumn;
-                    rightAttr.level = condition.level;
-                    Column rightColumn = resolveColumnForJoin(rightAttr, currtablesNF, current_search_path);
+//                    rightAttr.level = condition.level;
+                    Column rightColumn = resolveColumnForJoin(rightAttr, queryLevelObj, current_search_path);
 
                     if (leftColumn == null || rightColumn == null ){  // If derived columns are involved skip the join condition
                         continue;
@@ -785,8 +805,8 @@ public class ModelService {
                     Attribute attribute = new Attribute();
                     attribute.tableName = condition.leftTable;
                     attribute.name = condition.leftColumn;
-                    attribute.level = condition.level;
-                    Column col = resolveColumnForJoin(attribute, currtablesNF, current_search_path); // Get Column Object
+//                    attribute.level = condition.level;
+                    Column col = resolveColumnForJoin(attribute, queryLevelObj, current_search_path); // Get Column Object
 
                     col.whereConditionValue.put(condition.rightValue, condition.fullExpression);
 
@@ -836,7 +856,7 @@ public class ModelService {
     }
 
 
-    private Column resolveColumnForJoin(Attribute column, parserDOM currTablesNF, String current_search_path) {
+    private Column resolveColumnForJoin(Attribute column, com.haystack.visitor.Query queryLevelObj, String current_search_path) {
         String tableName = column.tableName;
         String columnName = column.name;
         String schemaName = column.schema;
@@ -845,82 +865,58 @@ public class ModelService {
         try {
             if (tableName == null || tableName.length() == 0) { // - TableName is not specified hence we will have to find the column
                 // - in the tables on the same level in the Query
-                for (int i = 0; i < currTablesNF.tables.size(); i++) {
-                    QryTable qryTable = currTablesNF.tables.get(i);
-                    if (column.level.equals(qryTable.level)) {  // filter only tables which are on the same level
-                        col = tablelist.findColumn(qryTable.schema, qryTable.tablename, column.name, current_search_path);
-                        if (col != null) {
-                            column.schema = qryTable.schema;
-                            column.tableName = qryTable.tablename;
-                            found = true;
-                            break;
-                        }
+                for (int i = 0; i < queryLevelObj.tables.size(); i++) {
+                    QryTable qryTable = queryLevelObj.tables.get(i);
+                    col = tablelist.findColumn(qryTable.schema, qryTable.tablename, column.name, current_search_path);
+                    if (col != null) {
+                        column.schema = qryTable.schema;
+                        column.tableName = qryTable.tablename;
+                        found = true;
+                        break;
                     }
                 }
             } else {
-                for (int i = 0; i < currTablesNF.tables.size(); i++) {
-                    QryTable qryTable = currTablesNF.tables.get(i);
-
-                    if (column.level.equals(qryTable.level)) {
-                        if (tableName.equals(qryTable.tablename)) {
-                            // Table Name matches, now check if schema matches
-                            if (schemaName == null) {
-                                // set schema for the columns for future use
+                for (int i = 0; i < queryLevelObj.tables.size(); i++) {
+                    QryTable qryTable = queryLevelObj.tables.get(i);
+                    if (tableName.equals(qryTable.tablename)) {
+                        // Table Name matches, now check if schema matches
+                        if (schemaName == null) {
+                            // set schema for the columns for future use
+                            col = tablelist.findColumn(schemaName, tableName, columnName, current_search_path);
+                            if (col == null) {
+                                found = false; // Column does'nt exist in Table, move on to next table
+                            } else {
+                                column.schema = qryTable.schema;
+                                found = true;
+                                break;
+                            }
+                        } else {
+                            if (schemaName.equals(qryTable.schema)) {
                                 col = tablelist.findColumn(schemaName, tableName, columnName, current_search_path);
                                 if (col == null) {
                                     found = false; // Column does'nt exist in Table, move on to next table
                                 } else {
-                                    column.schema = qryTable.schema;
                                     found = true;
                                     break;
-                                }
-                            } else {
-                                if (schemaName.equals(qryTable.schema)) {
-                                    col = tablelist.findColumn(schemaName, tableName, columnName, current_search_path);
-                                    if (col == null) {
-                                        found = false; // Column does'nt exist in Table, move on to next table
-                                    } else {
-                                        found = true;
-                                        break;
-                                    }
                                 }
                             }
-                        } else { // Mismatch now check if alias matches
-                            if (tableName.equals(qryTable.alias)) {
-                                col = tablelist.findColumn(qryTable.schema, qryTable.tablename, columnName, current_search_path);
-                                if (col == null) {
-                                    found = false; // Column does'nt exist in Table, move on to next table
-                                } else {
-                                    column.schema = qryTable.schema;
-                                    column.tableName = qryTable.tablename;
-                                    found = true;
-                                    break;
-                                }
+                        }
+                    } else { // Mismatch now check if alias matches
+                        if (tableName.equals(qryTable.alias)) {
+                            col = tablelist.findColumn(qryTable.schema, qryTable.tablename, columnName, current_search_path);
+                            if (col == null) {
+                                found = false; // Column does'nt exist in Table, move on to next table
+                            } else {
+                                column.schema = qryTable.schema;
+                                column.tableName = qryTable.tablename;
+                                found = true;
+                                break;
                             }
                         }
                     }
                 }
-                if (col == null){ // Went through all the tables and could not find the column, probably an alias from derived table
-                    for (int i=0; i<currTablesNF.columns.size(); i++){
-                        Attribute currAttr = currTablesNF.columns.get(i);
-
-                        if (currAttr.getDepth() >= column.getDepth()) {
-                            if (column.name.equals(currAttr.alias)) {
-                                col = tablelist.findColumn(currAttr.schema, currAttr.tableName, currAttr.name, current_search_path);
-                                if(col == null) {
-                                    continue;
-                                }else {
-                                    column.schema = currAttr.schema;
-                                    column.tableName = currAttr.tableName;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if(col == null) {
-                        log.debug("I give up cannot resolve column:" + column.toString());
-                    }
+                if(col == null) {
+                    log.debug("I give up cannot resolve column:" + column.toString());
                 }
             }
         } catch( Exception e){
@@ -931,14 +927,14 @@ public class ModelService {
         return col;
     }
 
-    private void processProjectedColumn(Attribute attribute, parserDOM currTablesNF, String current_search_path) {
+    private void processProjectedColumn(Attribute attribute, ArrayList<QryTable> tables, String current_search_path) {
         try
         {
             // For Debugging
             if (attribute.name.equals("sales_cnt")){
                 attribute = attribute;
             }
-            Column resolvedColumn = resolveColumn(attribute, currTablesNF, current_search_path);
+            Column resolvedColumn = resolveColumn(attribute, tables, current_search_path);
             // Check if TableName can be resolved with the Tables extracted by Parser in the Query
 
 
@@ -959,7 +955,7 @@ public class ModelService {
         }
     }
 
-    private Column resolveColumn(Attribute column, parserDOM currTablesNF, String current_search_path) {
+    private Column resolveColumn(Attribute column, ArrayList<QryTable> tables , String current_search_path) {
         String tableName = column.tableName;
         String columnName = column.name;
         String schemaName = column.schema;
@@ -969,98 +965,57 @@ public class ModelService {
             try {
                 if (tableName == null || tableName.length() == 0) { // - TableName is not specified hence we will have to find the column
                     // - in the tables on the same level in the Query
-                    for (int i = 0; i < currTablesNF.tables.size(); i++) {
-                        QryTable qryTable = currTablesNF.tables.get(i);
-                        if (column.level.equals(qryTable.level)) {  // filter only tables which are on the same level
-                            col = tablelist.findColumn(qryTable.schema, qryTable.tablename, column.name, current_search_path);
-                            if (col != null) {
-                                col.setResolvedNames(qryTable.schema,qryTable.tablename);
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (col == null) { // didn't find the table for the Attribute on the same level,
-                        // try whole SQL text and return the first table matched
-                        for (int i = 0; i < currTablesNF.tables.size(); i++) {
-                            QryTable qryTable = currTablesNF.tables.get(i);
-                            col = tablelist.findColumn(qryTable.schema, qryTable.tablename, column.name, current_search_path);
-                            if (col != null) {
-                                col.setResolvedNames(qryTable.schema,qryTable.tablename);
-                                found = true;
-                                break;
-                            }
+                    for (int i = 0; i < tables.size(); i++) {
+                        QryTable qryTable = tables.get(i);
+                        col = tablelist.findColumn(qryTable.schema, qryTable.tablename, column.name, current_search_path);
+                        if (col != null) {
+                            col.setResolvedNames(qryTable.schema,qryTable.tablename);
+                            found = true;
+                            break;
                         }
                     }
                 } else {
-                    for (int i = 0; i < currTablesNF.tables.size(); i++) {
-                        QryTable qryTable = currTablesNF.tables.get(i);
+                    for (int i = 0; i < tables.size(); i++) {
+                        QryTable qryTable = tables.get(i);
 
-                        if (column.level.equals(qryTable.level)) {
-                            if (tableName.equals(qryTable.tablename)) {
-                                // Table Name matches, now check if schema matches
-                                if (schemaName == null) {
-                                    // set schema for the columns for future use
-                                    String tmpSchema = tablelist.findSchema(tableName, current_search_path);
-                                    col = tablelist.findColumn(tmpSchema, tableName, columnName, current_search_path);
-                                    if (col == null) {
-                                        found = false; // Column does'nt exist in Table, move on to next table
-                                    } else {
-                                        col.setResolvedNames(qryTable.schema,qryTable.tablename);
-                                        found = true;
-                                        break;
-                                    }
+                        if (tableName.equals(qryTable.tablename)) {
+                            // Table Name matches, now check if schema matches
+                            if (schemaName == null) {
+                                // set schema for the columns for future use
+                                String tmpSchema = tablelist.findSchema(tableName, current_search_path);
+                                col = tablelist.findColumn(tmpSchema, tableName, columnName, current_search_path);
+                                if (col == null) {
+                                    found = false; // Column does'nt exist in Table, move on to next table
                                 } else {
-                                    if (schemaName.equals(qryTable.schema)) {
-                                        col = tablelist.findColumn(schemaName, tableName, columnName, current_search_path);
-                                        if (col == null) {
-                                            found = false; // Column does'nt exist in Table, move on to next table
-                                        } else {
-                                            found = true;
-                                            col.setResolvedNames(qryTable.schema,qryTable.tablename);
-                                            break;
-                                        }
-                                    }
+                                    col.setResolvedNames(qryTable.schema,qryTable.tablename);
+                                    found = true;
+                                    break;
                                 }
-                            } else { // Mismatch now check if alias matches
-                                if (tableName.equals(qryTable.alias)) {
-                                    col = tablelist.findColumn(qryTable.schema, qryTable.tablename, columnName, current_search_path);
+                            } else {
+                                if (schemaName.equals(qryTable.schema)) {
+                                    col = tablelist.findColumn(schemaName, tableName, columnName, current_search_path);
                                     if (col == null) {
                                         found = false; // Column does'nt exist in Table, move on to next table
                                     } else {
+                                        found = true;
                                         col.setResolvedNames(qryTable.schema,qryTable.tablename);
-                                        found = true;
                                         break;
                                     }
                                 }
                             }
-                        }
-                    }
-                    /***  -- No Need to resolve derived columns, leave them alone
-                    if (col == null){ // Went through all the tables and could not find the column, probably an alias from derived table
-                        for (int i=0; i<currTablesNF.columns.size(); i++){
-                            Attribute currAttr = currTablesNF.columns.get(i);
-
-                            if(currAttr.getDepth() > column.getDepth()) {
-                                if (column.name.equals(currAttr.alias)) {
-                                    col = tablelist.findColumn(currAttr.schema, currAttr.tableName, currAttr.name);
-                                    if(col == null) {
-                                        continue;
-                                    }else {
-                                        column.schema = currAttr.schema;
-                                        column.tableName = currAttr.tableName;
-                                        found = true;
-                                        break;
-                                    }
+                        } else { // Mismatch now check if alias matches
+                            if (tableName.equals(qryTable.alias)) {
+                                col = tablelist.findColumn(qryTable.schema, qryTable.tablename, columnName, current_search_path);
+                                if (col == null) {
+                                    found = false; // Column does'nt exist in Table, move on to next table
+                                } else {
+                                    col.setResolvedNames(qryTable.schema,qryTable.tablename);
+                                    found = true;
+                                    break;
                                 }
                             }
                         }
-                        if(col == null) {
-                            log.debug("I give up cannot resolve column:" + column.toString());
-                        }
                     }
-                    */
                 }
             } catch( Exception e){
                 log.error("Error Resolving Column:"+ column.nameFQN + " " + e.toString());
@@ -1089,7 +1044,8 @@ public class ModelService {
     }
 
     // TODO No need for this function since the child attribute will always increment usage
-    private Column resolveColAliasFromSubQuery(Attribute column, parserDOM currTablesNF) {
+    //Date 18/6/2016
+    /*private Column resolveColAliasFromSubQuery(Attribute column, parserDOM currTablesNF) {
         Column retColumn = null;
         int intLevel = column.level.lastIndexOf(".");
         if (intLevel == -1) { // Root level
@@ -1104,6 +1060,6 @@ public class ModelService {
             }
         }
         return retColumn;
-    }
+    }*/
 
 }

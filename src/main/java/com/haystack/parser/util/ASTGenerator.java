@@ -336,7 +336,7 @@ public class ASTGenerator implements SelectVisitor, FromItemVisitor, ExpressionV
             column.tableName = tableColumn.getTable().getName();
             column.schema = tableColumn.getTable().getSchemaName();
             column.nameFQN = tableColumn.getFullyQualifiedName();
-            column.level = extractedLevel;
+//            column.level = extractedLevel;
             column.alias = alias;
             columns.add(column);
         } catch (Exception e) {
@@ -538,7 +538,7 @@ public class ASTGenerator implements SelectVisitor, FromItemVisitor, ExpressionV
                     Attribute column = new Attribute();
                     try {
                         column.name = ((Column) param).getColumnName();
-                        column.level = level;
+//                        column.level = level;
                         try {
                             column.tableName = ((Column) param).getTable().getName();
                             column.nameFQN = ((Column) param).getTable().getFullyQualifiedName();

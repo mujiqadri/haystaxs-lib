@@ -21,54 +21,77 @@
  */
 package com.haystack.parser.util;
 
-import com.haystack.domain.QryTable;
-import com.haystack.parser.expression.*;
-import com.haystack.parser.expression.arithmetic.*;
-import com.haystack.parser.expression.conditional.AndExpression;
-import com.haystack.parser.expression.conditional.OrExpression;
-import com.haystack.parser.expression.relational.*;
-import com.haystack.parser.schema.Column;
-import com.haystack.parser.schema.Table;
-import com.haystack.parser.statement.delete.Delete;
-import com.haystack.parser.statement.insert.Insert;
-import com.haystack.parser.statement.replace.Replace;
-import com.haystack.parser.statement.select.*;
-import com.haystack.parser.statement.update.Update;
-import com.haystack.domain.Condition;
+//import com.haystack.parser.expression.*;
+//import com.haystack.parser.expression.arithmetic.*;
+//import com.haystack.parser.expression.conditional.AndExpression;
+//import com.haystack.parser.expression.conditional.OrExpression;
+//import com.haystack.parser.expression.relational.*;
+//import com.haystack.parser.schema.Column;
+//import com.haystack.parser.schema.Table;
+//import com.haystack.parser.statement.delete.Delete;
+//import com.haystack.parser.statement.insert.Insert;
+//import com.haystack.parser.statement.replace.Replace;
+//import com.haystack.parser.statement.select.*;
+//import com.haystack.parser.statement.update.Update;
+
+import net.sf.jsqlparser.expression.*;
+import net.sf.jsqlparser.expression.operators.arithmetic.*;
+import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
+import net.sf.jsqlparser.expression.operators.relational.*;
+import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.delete.Delete;
+import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.replace.Replace;
+import net.sf.jsqlparser.statement.select.*;
+import net.sf.jsqlparser.statement.update.Update;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
 import com.haystack.domain.Attribute;
+import com.haystack.visitor.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.haystack.domain.QryTable;
+import com.haystack.domain.Condition;
 /**
  * Find all used tables within an select statement.
  */
 public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor {
     static Logger log = LoggerFactory.getLogger(parserDOM.class.getName());
-    public ArrayList<QryTable> tables;
-    public ArrayList<Attribute> columns;
-    public ArrayList<Condition> conditions;
-    private HashMap<String, Integer> levels;
+//    public ArrayList<QryTable> tables;
+//    public ArrayList<Attribute> columns;
+//    public ArrayList<Condition> conditions;
+    private HashMap<String, Integer> levelsHashMap;
+    private List<String> otherItemNames;
+
+    public Query queryLevelObj;
+
+    private String currLevel;
+
     /**
      * There are special names, that are not table names but are parsed as
      * tables. These names are collected here and are not included in the tables
      * - names anymore.
      */
-    private List<String> otherItemNames;
+
 
     private void init() {
         otherItemNames = new ArrayList<String>();
-        tables = new ArrayList<QryTable>();
-        columns = new ArrayList<Attribute>();
-        conditions = new ArrayList<Condition>();
-        levels = new HashMap<String, Integer>();
+//        tables = new ArrayList<QryTable>();
+//        columns = new ArrayList<Attribute>();
+//        conditions = new ArrayList<Condition>();
+        levelsHashMap = new HashMap<String, Integer>();
+
+        queryLevelObj = new Query(null);
+        currLevel = "1";
     }
 
-    public ArrayList<Attribute> getAttributesForTable(String tablename, String schemaName) {
+   /* public ArrayList<Attribute> getAttributesForTable(String tablename, String schemaName) {
         ArrayList<Attribute> result = new ArrayList<Attribute>();
 
         for (int i = 0; i < columns.size(); i++) {
@@ -82,15 +105,15 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             }
         }
         return result;
-    }
+    }*/
 
-    private String getNextSubLevel(String currLevel) {
+    private String getNextSubLevel(String level) {
 
-        String splitArr[] = currLevel.split("\\.");
+        String splitArr[] = level.split("\\.");
         Integer intLevel = splitArr.length;
         Integer maxSubCnt = 0;
 
-        maxSubCnt = levels.get(currLevel);
+        maxSubCnt = levelsHashMap.get(level);
         if (maxSubCnt == null) { // No key in hashmap
             maxSubCnt = 1;
         } else {
@@ -98,8 +121,8 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         }
 
         // Now create the new level key for usage
-        String retNewLevel = currLevel + "." + maxSubCnt.toString();
-        levels.put(currLevel, maxSubCnt);
+        String retNewLevel = level + "." + maxSubCnt.toString();
+        levelsHashMap.put(level, maxSubCnt);
 
         return retNewLevel;
     }
@@ -109,17 +132,22 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         return "null";
     }
 
+
+    @Override
+    public void visit(OracleHint hint) {
+    }
+
     /**
      * Main entry for this Tool class. A list of found tables is returned.
      *
      * @param delete
      * @return
      */
-    public List<String> getTableList(Delete delete, String level) {
+    public List<String> getTableList(Delete delete) {
         init();
         otherItemNames.add(delete.getTable().getName());
         if (delete.getWhere() != null) {
-            delete.getWhere().accept(this, level);
+            delete.getWhere().accept(this);
         }
 
         return otherItemNames;
@@ -131,11 +159,11 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
      * @param insert
      * @return
      */
-    public List<String> getTableList(Insert insert, String level) {
+    public List<String> getTableList(Insert insert) {
         init();
         otherItemNames.add(insert.getTable().getName());
         if (insert.getItemsList() != null) {
-            insert.getItemsList().accept(this, level);
+            insert.getItemsList().accept(this);
         }
 
         return otherItemNames;
@@ -147,16 +175,16 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
      * @param replace
      * @return
      */
-    public List<String> getTableList(Replace replace, String level) {
+    public List<String> getTableList(Replace replace) {
         init();
         otherItemNames.add(replace.getTable().getName());
         if (replace.getExpressions() != null) {
             for (Expression expression : replace.getExpressions()) {
-                expression.accept(this, level);
+                expression.accept(this);
             }
         }
         if (replace.getItemsList() != null) {
-            replace.getItemsList().accept(this, level);
+            replace.getItemsList().accept(this);
         }
 
         return otherItemNames;
@@ -168,17 +196,15 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
      * @param select
      * @return
      */
-    public List<String> getSemantics(Select select, String level) {
+    public void getSemantics(Select select) {
         init();
-        levels.put("0", 1); // Add root element for first level
+        levelsHashMap.put("0", 1); // Add root element for first level
         if (select.getWithItemsList() != null) {
             for (WithItem withItem : select.getWithItemsList()) {
-                withItem.accept(this, level);
+                withItem.accept(this);
             }
         }
-        select.getSelectBody().accept(this, level);
-
-        return otherItemNames;
+        select.getSelectBody().accept(this);
     }
 
     /**
@@ -187,69 +213,68 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
      * @param update
      * @return
      */
-    public List<String> getSemantics(Update update, String level) {
+    public void getSemantics(Update update) {
         init();
         for (Table table : update.getTables()) {
             otherItemNames.add(table.getName());
+
+
+            QryTable qryTable = new QryTable();
+
+            try {
+                qryTable.tablename = table.getName();
+                qryTable.alias = table.getAlias().getName();
+                qryTable.schema = table.getSchemaName();
+            }catch(Exception ex){}
+
+            queryLevelObj.addTable(qryTable, currLevel);
         }
         if (update.getExpressions() != null) {
             for (Expression expression : update.getExpressions()) {
-                expression.accept(this, level);
+                expression.accept(this);
             }
         }
 
         if (update.getFromItem() != null) {
-            update.getFromItem().accept(this, level);
+            update.getFromItem().accept(this);
         }
 
         if (update.getJoins() != null) {
             for (Join join : update.getJoins()) {
-                join.getRightItem().accept(this, level);
+                join.getRightItem().accept(this);
             }
         }
 
         if (update.getWhere() != null) {
-            update.getWhere().accept(this, level);
+            update.getWhere().accept(this);
         }
-
-        return otherItemNames;
     }
 
     @Override
-    public void visit(WithItem withItem, String level) {
+    public void visit(WithItem withItem) {
         otherItemNames.add(withItem.getName().toLowerCase());
-        withItem.getSelectBody().accept(this, level);
+        withItem.getSelectBody().accept(this);
     }
 
     @Override
-    public void visit(PlainSelect plainSelect, String level) {
+    public void visit(PlainSelect plainSelect) {
+        //TODO: Populate structure in this method
+
         if (plainSelect.getSelectItems() != null) {
             for (SelectItem item : plainSelect.getSelectItems()) {
-                item.accept(this, level);
+                item.accept(this);
             }
         }
 
-        plainSelect.getFromItem().accept(this, level);
-
-        if (plainSelect.getJoins() != null) {
-            for (Join join : plainSelect.getJoins()) {
-                join.getRightItem().accept(this, level);
-                if (join.getOnExpression() != null) {
-                    join.getOnExpression().accept(this, level);
-                }
-            }
-        }
-        if (plainSelect.getWhere() != null) {
-            plainSelect.getWhere().accept(this, level);
-        }
-        if (plainSelect.getOracleHierarchical() != null) {
-            plainSelect.getOracleHierarchical().accept(this, level);
-        }
         if (plainSelect.getGroupByColumnReferences() != null) {
             List<Expression> groupByCols = plainSelect.getGroupByColumnReferences();
             for (int i = 0; i < groupByCols.size(); i++) {
 
-                groupByCols.get(i).accept(this, level);
+                groupByCols.get(i).accept(this);
+
+                //by: muji
+                //We are not extracting groupby columns because it dose not add another operation usage for the query
+                // Date:18/6/2016
                 /*
                 Column grpByRefs = (Column)groupByCols.get(i);
                 Attribute column = new Attribute();
@@ -267,13 +292,37 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                 */
             }
         }
+
         if (plainSelect.getHaving() != null) {
-            plainSelect.getHaving().accept(this, level);
+            plainSelect.getHaving().accept(this);
         }
+
+        plainSelect.getFromItem().accept(this);
+
+        if (plainSelect.getJoins() != null) {
+            for (Join join : plainSelect.getJoins()) {
+                join.getRightItem().accept(this);
+                if (join.getOnExpression() != null) {
+                    join.getOnExpression().accept(this);
+                }
+            }
+        }
+
+
+
+        if (plainSelect.getWhere() != null) {
+            plainSelect.getWhere().accept(this);
+        }
+
+
+        if (plainSelect.getOracleHierarchical() != null) {
+            plainSelect.getOracleHierarchical().accept(this);
+        }
+
     }
 
     @Override
-    public void visit(Table tableName, String level) {
+    public void visit(Table tableName) {
         try {
             //String tableWholeName = tableName.getFullyQualifiedName() + ':' + tableName.getAlias().toString().trim();
             QryTable table = new QryTable();
@@ -283,8 +332,9 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             if (tableName.getAlias() != null) {
                 table.alias = tableName.getAlias().toString().trim();
             }
-            table.level = level;
-            tables.add(table);
+//            table.level = level;
+//            tables.add(table);
+            queryLevelObj.addTable(table, currLevel);
         } catch (Exception e) {
             log.error("Error in adding Table in NF:" + tableName.toString() + ": Error Msg:" + e.toString());
         }
@@ -296,80 +346,26 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         */
     }
 
-
     @Override
-    public void visit(Addition addition, String level) {
-        visitBinaryExpression(addition, level);
-    }
-
-    @Override
-    public void visit(AndExpression andExpression, String level) {
-        visitBinaryExpression(andExpression, level);
-    }
-
-    @Override
-    public void visit(Between between, String level) {
-        between.getLeftExpression().accept(this, level);
-        between.getBetweenExpressionStart().accept(this, level);
-        between.getBetweenExpressionEnd().accept(this, level);
-    }
-
-    @Override
-    public void visit(SubSelect subSelect, String level) {
-        String nextLevelkey = getNextSubLevel(level);
-        subSelect.getSelectBody().accept(this, nextLevelkey);
-    }
-
-    @Override
-    public void visit(Column tableColumn, String level) {
+    public void visit(Column tableColumn) {
         try {
-            String splitArr[] = null;
-            String extractedLevel = level;
-            String alias = null;
-            if (level.contains("~")) {
-                splitArr = level.split("~");
-                extractedLevel = splitArr[0];
-                alias = splitArr[1];
-            }
-
             Attribute column = new Attribute();
             column.name = tableColumn.getColumnName();
             column.tableName = tableColumn.getTable().getName();
             column.schema = tableColumn.getTable().getSchemaName();
             column.nameFQN = tableColumn.getFullyQualifiedName();
-            column.level = extractedLevel;
-            column.alias = alias;
-            columns.add(column);
+
+            queryLevelObj.addColumn(column, currLevel);
         } catch (Exception e) {
             log.error("Error in extracting alias for Column:" + tableColumn.getFullyQualifiedName());
         }
     }
 
     @Override
-    public void visit(Division division, String level) {
-        visitBinaryExpression(division, level);
-    }
-
-    @Override
-    public void visit(DoubleValue doubleValue, String level) {
-    }
-
-    @Override
-    public void visit(EqualsTo equalsTo, String level) {
-        visitBinaryExpression(equalsTo, level);
-    }
-
-    @Override
-    public void visit(Function function, String level) {
-        String origLevel = level;
+    public void visit(Function function) {
         // 17-June-2015 Muji - Extract columns from the function
         try {
-            if (level.contains("~")) {
-                // Function call doesnt require Alias assignment to column
-                // Strip out the alias from the level field, and sanitize it
-                String strArr[] = level.split("~");
-                level = strArr[0];
-            }
+
             ExpressionList parameters = function.getParameters();
             if (parameters != null) {
                 for (int i = 0; i < parameters.getExpressions().size(); i++) {
@@ -379,8 +375,9 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                     try {
                         BinaryExpression bExp = (BinaryExpression) param;
                         if ((bExp.getLeftExpression() != null) && (bExp.getRightExpression() != null)) {
-                            bExp.getLeftExpression().accept(this, origLevel);
-                            bExp.getRightExpression().accept(this, origLevel);
+
+                            bExp.getLeftExpression().accept(this);
+                            bExp.getRightExpression().accept(this);
                             continue;
                         }
                     } catch (Exception e) {
@@ -390,7 +387,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                     try {
                         Function nestedFunc = (Function) param;
                         if (nestedFunc.getParameters() != null) {
-                            visit(nestedFunc, origLevel);
+                            visit(nestedFunc);
                             continue;
                         }
                     } catch (Exception e) {
@@ -399,13 +396,12 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                     Attribute column = new Attribute();
                     try {
                         column.name = ((Column) param).getColumnName();
-                        column.level = level;
                         try {
                             column.tableName = ((Column) param).getTable().getName();
                             column.nameFQN = ((Column) param).getTable().getFullyQualifiedName();
                         } catch (Exception e) {
                         }
-                        columns.add(column);
+                        queryLevelObj.addColumn(column, currLevel);
                     } catch (Exception e) {
 
                     }
@@ -416,119 +412,34 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         }
     }
 
-    @Override
-    public void visit(GreaterThan greaterThan, String level) {
-        visitBinaryExpression(greaterThan, level);
-    }
 
-    @Override
-    public void visit(GreaterThanEquals greaterThanEquals, String level) {
-        visitBinaryExpression(greaterThanEquals, level);
-    }
-
-    @Override
-    public void visit(InExpression inExpression, String level) {
-        inExpression.getLeftExpression().accept(this, level);
-        inExpression.getRightItemsList().accept(this, level);
-    }
-
-    @Override
-    public void visit(SignedExpression signedExpression, String level) {
-        signedExpression.getExpression().accept(this, level);
-    }
-
-    @Override
-    public void visit(IsNullExpression isNullExpression, String level) {
-    }
-
-    @Override
-    public void visit(JdbcParameter jdbcParameter, String level) {
-    }
-
-    @Override
-    public void visit(LikeExpression likeExpression, String level) {
-        visitBinaryExpression(likeExpression, level);
-    }
-
-    @Override
-    public void visit(ExistsExpression existsExpression, String level) {
-        existsExpression.getRightExpression().accept(this, level);
-    }
-
-    @Override
-    public void visit(LongValue longValue, String level) {
-    }
-
-    @Override
-    public void visit(MinorThan minorThan, String level) {
-        visitBinaryExpression(minorThan, level);
-    }
-
-    @Override
-    public void visit(MinorThanEquals minorThanEquals, String level) {
-        visitBinaryExpression(minorThanEquals, level);
-    }
-
-    @Override
-    public void visit(Multiplication multiplication, String level) {
-        visitBinaryExpression(multiplication, level);
-    }
-
-    @Override
-    public void visit(NotEqualsTo notEqualsTo, String level) {
-        visitBinaryExpression(notEqualsTo, level);
-    }
-
-    @Override
-    public void visit(NullValue nullValue, String level) {
-    }
-
-    @Override
-    public void visit(OrExpression orExpression, String level) {
-        visitBinaryExpression(orExpression, level);
-    }
-
-    @Override
-    public void visit(Parenthesis parenthesis, String level) {
-        parenthesis.getExpression().accept(this, level);
-    }
-
-    @Override
-    public void visit(StringValue stringValue, String level) {
-    }
-
-    @Override
-    public void visit(Subtraction subtraction, String level) {
-        visitBinaryExpression(subtraction, level);
-    }
-
-    public void visitBinaryExpression(BinaryExpression binaryExpression, String level) {
+    public void visitBinaryExpression(BinaryExpression binaryExpression) {
         Condition leftCondition = null, rightCondition = null;
         try {
-            Condition condition = extractCondition(binaryExpression, level);
+            Condition condition = extractCondition(binaryExpression);
         } catch (Exception e) {
             log.debug("Do nothing, not a leaf expression" + binaryExpression.toString() + e.toString());
         }
         try {
-            leftCondition = extractCondition(binaryExpression.getLeftExpression(), level);
+            leftCondition = extractCondition(binaryExpression.getLeftExpression());
         } catch (Exception e) {
             log.debug("left extractCondition expression:" + this.toString() + " exception:" + e.toString());
         }
         try {
-            rightCondition = extractCondition(binaryExpression.getRightExpression(), level);
+            rightCondition = extractCondition(binaryExpression.getRightExpression());
         } catch (Exception e) {
             log.debug("right extractCondition expression:" + this.toString() + " exception:" + e.toString());
         }
         // Now visit the rest of the tree
         //if (leftCondition == null ){
-        binaryExpression.getLeftExpression().accept(this, level);
+        binaryExpression.getLeftExpression().accept(this);
         //}
         //if (rightCondition == null) {
-        binaryExpression.getRightExpression().accept(this, level);
+        binaryExpression.getRightExpression().accept(this);
         //}
     }
 
-    private Condition extractCondition(Expression currExpression, String level) {
+    private Condition extractCondition(Expression currExpression) {
 
         try {
             String expressionClass = currExpression.getClass().toString();
@@ -538,7 +449,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                 return null;
             }
             Condition condition = new Condition();
-            condition.level = level;
 
             BinaryExpression binaryExpression = null;
             try {
@@ -557,7 +467,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                     if (((Column) (binaryExpression).getLeftExpression()).getColumnName() != null) {
                         condition.leftTable = ((Column) binaryExpression.getLeftExpression()).getTable().toString();
                         condition.leftColumn = ((Column) binaryExpression.getLeftExpression()).getColumnName();
-                        //((Column) binaryExpression.getLeftExpression()).accept(this, level);
+                        //((Column) binaryExpression.getLeftExpression()).accept(this);
 
                     }
                 } catch (Exception e) {
@@ -569,7 +479,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                     if (((Column) (binaryExpression).getRightExpression()).getColumnName() != null) {
                         condition.rightTable = ((Column) binaryExpression.getRightExpression()).getTable().toString();
                         condition.rightColumn = ((Column) binaryExpression.getRightExpression()).getColumnName();
-                        // ((Column) binaryExpression.getRightExpression()).accept(this, level);
+                        // ((Column) binaryExpression.getRightExpression()).accept(this);
                     }
                 } catch (Exception e) {
                     condition.isJoin = false;
@@ -577,8 +487,8 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                 }
                 if (condition.operator.equals("-")) { // This is projection expression donot add it to conditions
                     condition.operator = condition.operator;
-                } else {
-                    conditions.add(condition);
+                } else{
+                    queryLevelObj.addCondition(condition, currLevel);
                 }
             } else {
                 if (expressionClass.contains(".arithmetic") || expressionClass.contains(".Between") || expressionClass.contains(".EqualsTo")) {
@@ -596,7 +506,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                         } else {
                             condition.operator = "ISNULL";
                         }
-                        conditions.add(condition);
+                        queryLevelObj.addCondition(condition, currLevel);
                     } else {
                         condition = condition;
                         log.error("Dangling condition:" + currExpression.toString());
@@ -610,72 +520,160 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         }
     }
 
-    /**
-     * private Condition extractCondition(Expression expression, int level){
-     * String baseClass = "com.haystack.parser.expression";
-     * String expressionClass = expression.getClass().toString();
-     * Condition condition = null;
-     * <p/>
-     * if (expressionClass.contains(".EqualsTo")) {
-     * condition = extractCondition((BinaryExpression) expression );
-     * }
-     * if (expressionClass.contains(".IsNullExpression")){
-     * condition = extractCondition((IsNullExpression) expression);
-     * }
-     * if ( expressionClass.contains(".BinaryExpression")){
-     * condition = extractCondition((BinaryExpression) expression);
-     * }
-     * else {
-     * condition = extractCondition((BinaryExpression) expression);
-     * }
-     * <p/>
-     * <p/>
-     * <p/>
-     * return condition;
-     * }
-     * <p/>
-     * private Condition extractCondition(IsNullExpression currExpression){
-     * Condition condition = null;
-     * try {
-     * condition = new Condition();
-     * condition.fullExpression = currExpression.toString();
-     * condition.leftExpression = currExpression.getLeftExpression().toString();
-     * condition.rightExpression = "NULL";
-     * if (currExpression.isNot() == false)
-     * condition.operator = "ISNULL";
-     * else
-     * condition.operator = "ISNOTNULL";
-     * <p/>
-     * conditions.add(condition);
-     * //condition = extractCondition((BinaryExpression) currExpression);
-     * }catch (Exception e){
-     * log.error("extractCondition");
-     * }
-     * return condition;
-     * }
-     * private Condition extractCondition(EqualsTo currExpression){
-     * EqualsTo test = currExpression;
-     * return null;
-     * }
-     */
     @Override
-    public void visit(ExpressionList expressionList, String level) {
+    public void visit(SelectExpressionItem item) {
+        item.getExpression().accept(this);
+    }
+
+    @Override
+    public void visit(Addition addition) {
+        visitBinaryExpression(addition);
+    }
+
+    @Override
+    public void visit(AndExpression andExpression) {
+        visitBinaryExpression(andExpression);
+    }
+
+    @Override
+    public void visit(Between between) {
+        between.getLeftExpression().accept(this);
+        between.getBetweenExpressionStart().accept(this);
+        between.getBetweenExpressionEnd().accept(this);
+    }
+
+    @Override
+    public void visit(SubSelect subSelect) {
+        String nextLevelkey = getNextSubLevel(currLevel);
+        currLevel = nextLevelkey;
+
+        subSelect.getSelectBody().accept(this);
+    }
+
+
+    @Override
+    public void visit(Division division) {
+        visitBinaryExpression(division);
+    }
+
+    @Override
+    public void visit(DoubleValue doubleValue) {
+    }
+
+    @Override
+    public void visit(EqualsTo equalsTo) {
+        visitBinaryExpression(equalsTo);
+    }
+
+    @Override
+    public void visit(GreaterThan greaterThan) {
+        visitBinaryExpression(greaterThan);
+    }
+
+    @Override
+    public void visit(GreaterThanEquals greaterThanEquals) {
+        visitBinaryExpression(greaterThanEquals);
+    }
+
+    @Override
+    public void visit(InExpression inExpression) {
+        inExpression.getLeftExpression().accept(this);
+        inExpression.getRightItemsList().accept(this);
+    }
+
+    @Override
+    public void visit(SignedExpression signedExpression) {
+        signedExpression.getExpression().accept(this);
+    }
+
+    @Override
+    public void visit(IsNullExpression isNullExpression) {
+    }
+
+    @Override
+    public void visit(JdbcParameter jdbcParameter) {
+    }
+
+    @Override
+    public void visit(LikeExpression likeExpression) {
+        visitBinaryExpression(likeExpression);
+    }
+
+    @Override
+    public void visit(ExistsExpression existsExpression) {
+        existsExpression.getRightExpression().accept(this);
+    }
+
+    @Override
+    public void visit(LongValue longValue) {
+    }
+
+    @Override
+    public void visit(HexValue hexValue) {
+
+    }
+
+    @Override
+    public void visit(MinorThan minorThan) {
+        visitBinaryExpression(minorThan);
+    }
+
+    @Override
+    public void visit(MinorThanEquals minorThanEquals) {
+        visitBinaryExpression(minorThanEquals);
+    }
+
+    @Override
+    public void visit(Multiplication multiplication) {
+        visitBinaryExpression(multiplication);
+    }
+
+    @Override
+    public void visit(NotEqualsTo notEqualsTo) {
+        visitBinaryExpression(notEqualsTo);
+    }
+
+    @Override
+    public void visit(NullValue nullValue) {
+    }
+
+    @Override
+    public void visit(OrExpression orExpression) {
+        visitBinaryExpression(orExpression);
+    }
+
+    @Override
+    public void visit(Parenthesis parenthesis) {
+        parenthesis.getExpression().accept(this);
+    }
+
+    @Override
+    public void visit(StringValue stringValue) {
+    }
+
+    @Override
+    public void visit(Subtraction subtraction) {
+        visitBinaryExpression(subtraction);
+    }
+
+    @Override
+    public void visit(ExpressionList expressionList) {
         for (Expression expression : expressionList.getExpressions()) {
-            expression.accept(this, level);
+            expression.accept(this);
         }
 
     }
 
     @Override
-    public void visit(DateValue dateValue, String level) {
+    public void visit(DateValue dateValue) {
     }
 
     @Override
-    public void visit(TimestampValue timestampValue, String level) {
+    public void visit(TimestampValue timestampValue) {
     }
 
     @Override
-    public void visit(TimeValue timeValue, String level) {
+    public void visit(TimeValue timeValue) {
     }
 
     /*
@@ -684,162 +682,168 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
      * @see net.sf.jsqlparser.expression.ExpressionVisitor#visit(net.sf.jsqlparser.expression.CaseExpression)
      */
     @Override
-    public void visit(CaseExpression caseExpression, String level) {
-    }
-
-    /*
-     * (non-Javadoc)
-     *
-     * @see net.sf.jsqlparser.expression.ExpressionVisitor#visit(net.sf.jsqlparser.expression.WhenClause)
-     */
-    @Override
-    public void visit(WhenClause whenClause, String level) {
+    public void visit(CaseExpression caseExpression) {
     }
 
     @Override
-    public void visit(AllComparisonExpression allComparisonExpression, String level) {
-        allComparisonExpression.getSubSelect().getSelectBody().accept(this, level);
+    public void visit(WhenClause whenClause) {
     }
 
     @Override
-    public void visit(AnyComparisonExpression anyComparisonExpression, String level) {
-        anyComparisonExpression.getSubSelect().getSelectBody().accept(this, level);
+    public void visit(AllComparisonExpression allComparisonExpression) {
+        allComparisonExpression.getSubSelect().getSelectBody().accept(this);
     }
 
     @Override
-    public void visit(SubJoin subjoin, String level) {
-        subjoin.getLeft().accept(this, level);
-        subjoin.getJoin().getRightItem().accept(this, level);
+    public void visit(AnyComparisonExpression anyComparisonExpression) {
+        anyComparisonExpression.getSubSelect().getSelectBody().accept(this);
     }
 
     @Override
-    public void visit(Concat concat, String level) {
-        visitBinaryExpression(concat, level);
+    public void visit(SubJoin subjoin) {
+        subjoin.getLeft().accept(this);
+        subjoin.getJoin().getRightItem().accept(this);
     }
 
     @Override
-    public void visit(Matches matches, String level) {
-        visitBinaryExpression(matches, level);
+    public void visit(Concat concat) {
+        visitBinaryExpression(concat);
     }
 
     @Override
-    public void visit(BitwiseAnd bitwiseAnd, String level) {
-        visitBinaryExpression(bitwiseAnd, level);
+    public void visit(Matches matches) {
+        visitBinaryExpression(matches);
     }
 
     @Override
-    public void visit(BitwiseOr bitwiseOr, String level) {
-        visitBinaryExpression(bitwiseOr, level);
+    public void visit(BitwiseAnd bitwiseAnd) {
+        visitBinaryExpression(bitwiseAnd);
     }
 
     @Override
-    public void visit(BitwiseXor bitwiseXor, String level) {
-        visitBinaryExpression(bitwiseXor, level);
+    public void visit(BitwiseOr bitwiseOr) {
+        visitBinaryExpression(bitwiseOr);
     }
 
     @Override
-    public void visit(CastExpression cast, String level) {
-        cast.getLeftExpression().accept(this, level);
+    public void visit(BitwiseXor bitwiseXor) {
+        visitBinaryExpression(bitwiseXor);
     }
 
     @Override
-    public void visit(Modulo modulo, String level) {
-        visitBinaryExpression(modulo, level);
+    public void visit(CastExpression cast) {
+        cast.getLeftExpression().accept(this);
     }
 
     @Override
-    public void visit(AnalyticExpression analytic, String level) {
+    public void visit(Modulo modulo) {
+        visitBinaryExpression(modulo);
     }
 
     @Override
-    public void visit(SetOperationList list, String level) {
-        for (PlainSelect plainSelect : list.getPlainSelects()) {
-            visit(plainSelect, level);
+    public void visit(AnalyticExpression analytic) {
+    }
+
+    @Override
+    public void visit(SetOperationList list) {
+        for (SelectBody plainSelect : list.getSelects()) {
+            plainSelect.accept(this);
         }
     }
 
     @Override
-    public void visit(ExtractExpression eexpr, String level) {
+    public void visit(ExtractExpression eexpr) {
     }
 
     @Override
-    public void visit(LateralSubSelect lateralSubSelect, String level) {
-        lateralSubSelect.getSubSelect().getSelectBody().accept(this, level);
+    public void visit(LateralSubSelect lateralSubSelect) {
+        lateralSubSelect.getSubSelect().getSelectBody().accept(this);
     }
 
     @Override
-    public void visit(MultiExpressionList multiExprList, String level) {
+    public void visit(MultiExpressionList multiExprList) {
         for (ExpressionList exprList : multiExprList.getExprList()) {
-            exprList.accept(this, level);
+            exprList.accept(this);
         }
     }
 
     @Override
-    public void visit(ValuesList valuesList, String level) {
+    public void visit(ValuesList valuesList) {
+    }
+
+    @Override
+    public void visit(TableFunction tableFunction) {
+
     }
 
 
     @Override
-    public void visit(IntervalExpression iexpr, String level) {
+    public void visit(IntervalExpression iexpr) {
     }
 
     @Override
-    public void visit(JdbcNamedParameter jdbcNamedParameter, String level) {
+    public void visit(JdbcNamedParameter jdbcNamedParameter) {
     }
 
     @Override
-    public void visit(OracleHierarchicalExpression oexpr, String level) {
+    public void visit(OracleHierarchicalExpression oexpr) {
         if (oexpr.getStartExpression() != null) {
-            oexpr.getStartExpression().accept(this, level);
+            oexpr.getStartExpression().accept(this);
         }
 
         if (oexpr.getConnectExpression() != null) {
-            oexpr.getConnectExpression().accept(this, level);
+            oexpr.getConnectExpression().accept(this);
         }
     }
 
     @Override
-    public void visit(RegExpMatchOperator rexpr, String level) {
-        visitBinaryExpression(rexpr, level);
+    public void visit(RegExpMatchOperator rexpr) {
+        visitBinaryExpression(rexpr);
     }
 
     @Override
-    public void visit(RegExpMySQLOperator rexpr, String level) {
-        visitBinaryExpression(rexpr, level);
+    public void visit(RegExpMySQLOperator rexpr) {
+        visitBinaryExpression(rexpr);
     }
 
     @Override
-    public void visit(JsonExpression jsonExpr, String level) {
+    public void visit(JsonExpression jsonExpr) {
     }
 
     @Override
-    public void visit(AllColumns allColumns, String level) {
+    public void visit(AllColumns allColumns) {
     }
 
     @Override
-    public void visit(AllTableColumns allTableColumns, String level) {
+    public void visit(AllTableColumns allTableColumns) {
+    }
+
+
+    @Override
+    public void visit(WithinGroupExpression wgexpr) {
     }
 
     @Override
-    public void visit(SelectExpressionItem item, String level) {
-        String alias = null;
-        if (item.getAlias() != null) {
-            alias = item.getAlias().getName();
-        }
-        // Not a good habit but I have to send the Alias down to the Column level
-        // Concat with level with a tilde ~
-        if (alias != null) {
-            item.getExpression().accept(this, level + "~" + alias);
-        } else {
-            item.getExpression().accept(this, level);
-        }
+    public void visit(UserVariable var) {
     }
 
     @Override
-    public void visit(WithinGroupExpression wgexpr, String level) {
+    public void visit(NumericBind numericBind) {
+
     }
 
     @Override
-    public void visit(UserVariable var, String level) {
+    public void visit(KeepExpression keepExpression) {
+
+    }
+
+    @Override
+    public void visit(MySQLGroupConcat mySQLGroupConcat) {
+
+    }
+
+    @Override
+    public void visit(RowConstructor rowConstructor) {
+
     }
 }

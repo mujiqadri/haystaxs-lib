@@ -13,7 +13,6 @@ public class Attribute {
     public String alias;
     public int length;
     public String nameFQN;
-    public String level;
 
     public Attribute (){
 
@@ -27,11 +26,7 @@ public class Attribute {
         this.name = name;
         this.type = type;
     }
-    public int getDepth(){
-        String currLevel = level;
-        int currDepth = currLevel.length() - currLevel.replace(".", "").length();
-        return currDepth;
-    }
+
     public String getFQDN(){
         return schema + "." + tableName + "." + name ;
     }
