@@ -96,4 +96,8 @@ public class Column {
     public void incrementWhereUsageScore(){
         whereUsage++;
     }
+
+    public java.lang.Integer getWhereUsage() {
+        return whereUsage;
+    }
 }

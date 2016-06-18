@@ -10,6 +10,8 @@ import com.haystack.parser.statement.update.Update;
 import com.haystack.parser.util.ASTGenerator;
 import com.haystack.parser.util.parserDOM;
 import com.haystack.util.ConfigProperties;
+import com.haystack.util.Credentials;
+import com.haystack.util.DBConnectService;
 import com.haystack.util.HSException;
 
 //import net.sf.jsqlparser.parser.CCJSqlParser;
@@ -22,8 +24,11 @@ import com.haystack.parser.statement.select.Select;
 import com.haystack.parser.util.parserDOM;
 
 
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
 
 /**
@@ -41,9 +46,13 @@ public class ModelService {
     private Date model_creation_date;
     private Integer userId = null;
 
+    private  DBConnectService dbConnectService;
+
     public ModelService(){
         tablelist = new Tables();
         configProperties = new ConfigProperties();
+        dbConnectService = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
+
         try {
             configProperties.loadProperties();
         } catch (Exception e) {
@@ -58,6 +67,75 @@ public class ModelService {
         this.tablelist = tbllist;
     }
 
+
+    public void generateRecommendations(int gpsd_id){
+        this.gpsd_id = gpsd_id;
+        generateRecommendations();
+    }
+
+    private int getDistinctNoOfRows(String schema, String tableName, String columnName, Credentials credentials) throws SQLException, IOException, ClassNotFoundException {
+
+        dbConnectService.setCredentials(credentials);
+
+        int totalNoDistinctValues = 0;
+
+        String sql = "SELECT count (DISTINCT " +tableName +"." +columnName +") as no_of_distinct_value FROM " +schema +"." +tableName;
+
+        dbConnectService.connect(credentials);
+
+        ResultSet result = dbConnectService.execQuery(sql);
+
+        result.next();
+        totalNoDistinctValues = result.getInt("no_of_distinct_value");
+
+        return totalNoDistinctValues;
+    }
+
+    private Credentials getCredentials() throws IOException, SQLException, ClassNotFoundException {
+        ConfigProperties configProperties = new ConfigProperties();
+        configProperties.loadProperties();
+
+        String haystackSchema = configProperties.properties.getProperty("main.schema");
+
+        Credentials gpsd_credentials  = configProperties.getGPSDCredentials();
+
+        String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+                " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
+                ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id;
+
+        Credentials clusterCred = new Credentials();
+
+        dbConnectService.connect(configProperties.getHaystackDBCredentials());
+        ResultSet rs = dbConnectService.execQuery(sql);
+
+        while (rs.next()) {
+
+            Integer clusterId = rs.getInt("gpsd_id");
+
+            String hostName = rs.getString("host");
+            Boolean isGPSD = false;
+            if (hostName == null || hostName.length() == 0) { // load from stats
+                isGPSD = true;
+            }
+
+            if (isGPSD) { // load from stats
+                clusterCred = gpsd_credentials;
+                clusterCred.setDatabase(rs.getString("gpsd_db"));
+            } else {
+
+                String sHost = rs.getString("host");
+                String dbname = rs.getString("dbname");
+                String username = rs.getString("username");
+                String password = rs.getString("password");
+                Integer port = rs.getInt("port");
+
+                clusterCred.setCredentials(sHost, ""+port, dbname, username, password);
+            }
+        }
+
+        return clusterCred;
+    }
+
     private Recommendation createNewRecommendation(Table currTable, Recommendation.RecommendationType type) {
         Recommendation recommendation = new Recommendation();
         recommendation.schema = currTable.schema;
@@ -67,7 +145,11 @@ public class ModelService {
         return recommendation;
     }
     public void generateRecommendations() {
+
         try {
+
+            Credentials credentials = getCredentials();
+
             // Fetch Recommendation Engine settings from config.properties file
             Double columnarThresholdPercent = Double.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
             Double topNPercent = Double.valueOf(configProperties.properties.getProperty("re.topNPercent"));
@@ -134,6 +216,7 @@ public class ModelService {
                             recKey += "," + currCol;
                         }
                     }
+
                     for (String candidateColumn : maxConfidenceCandidateDK) {
                         if (currTable.dk.containsKey(candidateColumn) == false) {
                             // DK and Candidate Key Mismatch, add recommendation for Candidate Key
@@ -188,6 +271,7 @@ public class ModelService {
                         recId++;
                     }
                 }
+
                 // B.3) If the table is in bottomNPercent and if its columnar, then recommend heap
                 //      storage and uncompressed
                 if (currTable.stats.percentile <= bottomNPercent) {
@@ -199,6 +283,47 @@ public class ModelService {
                         recId++;
                     }
                 }
+
+                //Step1: Find That Table Is In TopNPercent Using Perito Principle
+
+                HashMap<String, Column> columnsForSuggestion = new HashMap<String, Column>();
+
+                if((100-topNPercent) <= currTable.stats.percentile){
+
+                    //Step2: Get Those Columns Which Are Used In Where Clause And Add Them In 'columnsForSuggestion' List.
+
+                    Iterator<Column> columnsIterator = currTable.columns.values().iterator();
+
+                    while(columnsIterator.hasNext()){
+                        Column column = columnsIterator.next();
+                        int whereUsage = column.getWhereUsage();
+
+                        if(whereUsage > 0){
+                            columnsForSuggestion.put( column.column_name ,column);
+                        }
+                    }
+                }
+
+                //Step3: Find The Column With Max Cardenality For Recommendation.
+
+                Column recommendedColumn = null;
+                double maxCardenality = 0;
+                int recommendedColumnDistinctNoOfRows = 0;
+
+                Collection<Column> columns = columnsForSuggestion.values();
+
+                for(Column column : columns){
+                    int distinctNoOfRows = getDistinctNoOfRows(currTable.schema, currTable.tableName, column.column_name, credentials);
+
+                    double cardenality = currTable.stats.noOfRows / distinctNoOfRows; //Finding Cardenality using formula : total no of rows in table / total no of distinct rows in column
+
+                    if(cardenality > maxCardenality){
+                        maxCardenality = cardenality;
+                        recommendedColumn = column;
+                        recommendedColumnDistinctNoOfRows = distinctNoOfRows;
+                    }
+                }
+
                 // C) Partitions:
                 //     Check to see if the table is partititioned
                 if (currTable.stats.isPartitioned) {
@@ -206,17 +331,42 @@ public class ModelService {
                     //         then check if the partitioned attribute is used in most of the where clauses
                     //         give bias to date attribute, recommend two or three possible options for partition columns
 
+                    //Recommandtaion type= Partition
+                    //Desc: why we select the column, where uses = , cardinality = , distinct no of value = , rank # .
+
+                    if(recommendedColumn != null) {
+
+                        //If Table Is Partitioned On Any Column
+                        if(!currTable.partitionColumn.isEmpty()) {
+                            if(!currTable.partitionColumn.containsKey(recommendedColumn.column_name)){
+                                Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.PARTITION);
+                                recommendation.description = String.format("Why we selected the column %s.%s, Where usage : %d, Cardinality : %.2f, Distinct no of values : %d", recommendedColumn.getResolvedTableName(), recommendedColumn.column_name, recommendedColumn.getWhereUsage(), maxCardenality, recommendedColumnDistinctNoOfRows);
+                                tablelist.recommendations.put(recId.toString(), recommendation);
+                                recId++;
+                            }
+                        }
+                    }
+
                 } else {
                     //     if NO
                     //         then check if table is in re.TopNPercent tables by rows
                     //         if YES
                     //             then identify the attribute which is used most frequently in where clauses
-                    //             give priority to date attributes
+
+                    //Check if table is in topNPercent tables by row
+                    if(recommendedColumn != null) {
+                        if((100-topNPercent) <= currTable.stats.percentile) {
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.PARTITION);
+                            recommendation.description = String.format("Why we selected the column %s.%s, Where usage : %d, Cardinality : %.2f, Distinct no of values : %d", recommendedColumn.getResolvedTableName(), recommendedColumn.column_name, recommendedColumn.getWhereUsage(), maxCardenality, recommendedColumnDistinctNoOfRows);
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                    }
                 }
             }
 
         } catch (Exception e) {
-
+            e.printStackTrace();
         }
     }
 
@@ -307,6 +457,7 @@ public class ModelService {
                     Double o2_weight = Double.valueOf(o2.stats.sizeUnCompressed);
 
                     Integer ret = Double.compare(o1_weight, o2_weight);
+
                     return ret;
                 }
             });
@@ -319,7 +470,6 @@ public class ModelService {
                 cumPercentage += tableSizePercentage;
                 table.stats.rank = rank;
                 table.stats.percentile = cumPercentage;
-                //System.out.println("Rank=" + rank + " " + table.schema + "." + table.tableName + " Percentile=" + table.stats.percentile + " Size=" + table.stats.sizeUnCompressed);
             }
 
         } catch (Exception e) {

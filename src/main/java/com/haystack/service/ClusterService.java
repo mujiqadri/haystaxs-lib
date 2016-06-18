@@ -13,7 +13,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.IOException;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Properties;
@@ -167,6 +169,7 @@ import java.util.Properties;
                         //dbConnect.execNoResultSet(sql);
                         continue;
                     }
+
                     Integer queryRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("query.refresh.interval.hours"));
                     // Add Refresh Interval to Last refresh time and then check
                     Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
@@ -212,7 +215,6 @@ import java.util.Properties;
         }
         return cred;
     }
-
 
     // Read File with multiple SQL statements, spread across multiple lines, and includes comments
     public void readSQLFile(String filename) {
@@ -273,10 +275,12 @@ import java.util.Properties;
         Cluster cluster;
         Credentials clusterCred = new Credentials();
         try {
+
             String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
                     " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
                     ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id;
             ResultSet rs = dbConnect.execQuery(sql);
+
             while (rs.next()) {
 
                 Integer clusterId = rs.getInt("gpsd_id");
@@ -297,6 +301,7 @@ import java.util.Properties;
                 } else {
                     clusterCred = getCredentials(rs);
                 }
+
                 // Instantiate Cluster Object based on type
                 switch (clusterType) {
                     case "GREENPLUM":

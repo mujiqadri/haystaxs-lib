@@ -5,8 +5,10 @@ import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
 
 import javax.swing.text.StyledEditorKit;
+import java.io.IOException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.*;
 
@@ -36,7 +38,6 @@ public class Greenplum extends Cluster {
     // This method works when connected to the cluster
     // this doesnot work when GPSD file is uploaded since this information
     // should be extracted from the stats - call getTableDetailsfromStats
-
 
     @Override
     public Tables loadTables(Credentials credentials, Boolean isGPSD, Integer gpsd_id) {
@@ -215,7 +216,7 @@ public class Greenplum extends Cluster {
                         rsPar.close();
 
                         // Recalculate TableSize based on partitions
-                        tbl.stats.sizeOnDisk = ((tbl.stats.relPages * 32) / (1024 * 1024));
+                        tbl.stats.sizeOnDisk = ((tbl.stats.relPages.floatValue() * 32) / (1024 * 1024));
                         tbl.stats.sizeUnCompressed = tbl.stats.sizeOnDisk;
                         tbl.stats.sizeForDisplayCompressed = getSizePretty(tbl.stats.sizeOnDisk); // Normalize size and unit to display atleast 2 digits
                         tbl.stats.sizeForDisplayUnCompressed = getSizePretty(tbl.stats.sizeUnCompressed); // Normalize size and unit to display atleast 2 digits

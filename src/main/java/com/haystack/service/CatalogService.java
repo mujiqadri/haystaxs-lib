@@ -78,7 +78,6 @@ public class CatalogService {
             saveGpsdStats(gpsd_id, tablelist);
             json = tablelist.getJSON();
 
-
         } catch (Exception e) {
             log.error("Error in getting Json (gpsd might not exist) from GPSD:" + gpsd_id + " Exception:" + e.toString());
             HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
@@ -251,7 +250,7 @@ public class CatalogService {
 
 
             ms.scoreModel();
-            ms.generateRecommendations();
+            ms.generateRecommendations(gpsd_id);
             String model_json = ms.getModelJSON();
 
             // Create a UserInbox Message for Completed Processing
