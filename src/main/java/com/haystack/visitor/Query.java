@@ -24,10 +24,10 @@ public class Query {
 
     public ArrayList<Query> subQueries;
 
-    Query parentQuery;
+    //Query parentQuery;
 
     public Query(Query parentQuery){
-        this.parentQuery = parentQuery;
+        //this.parentQuery = parentQuery;
 
         if(parentQuery == null){
             level = "1";
@@ -42,40 +42,99 @@ public class Query {
         subQueries = new ArrayList<Query>();
     }
 
-    public boolean addTable(Query parentQuery, QryTable newTable, String currLevel){
-        if(parentQuery.level.equals(currLevel)){
+    public boolean addTable(Query parentQuery, QryTable newTable, String newLevel) {
+        if (parentQuery.level.equals(newLevel)) {
             return parentQuery.tables.add(newTable);
         }else{
-            if(isImmediateChild( parentQuery.level, currLevel)) {
+            if (isImmediateChild(parentQuery.level, newLevel)) {
 
-                Query subQuery = containsSubQuery(parentQuery.subQueries, currLevel);
+                Query subQuery = containsSubQuery(parentQuery.subQueries, newLevel);
 
                 if(subQuery == null){
                     subQuery = new Query(this);
-                    subQuery.level = currLevel;
+                    subQuery.level = newLevel;
                     subQuery.tables.add(newTable);
                     parentQuery.subQueries.add(subQuery);
                 }else{
-                    subQuery.addTable(parentQuery, newTable, currLevel);
+                    this.addTable(subQuery, newTable, newLevel);
                 }
 
             }else{
-                for(Query currQuery: subQueries){
-                    if(currQuery.addTable(parentQuery, newTable, currLevel)){
-                        return true;
-                    }
+                Query subQuery = containsSubQuery(parentQuery.subQueries, newLevel);
+
+                if (subQuery != null) {
+                    this.addTable(subQuery, newTable, newLevel);
+                    return true;
                 }
             }
         }
-
         return false;
     }
 
-    private Query containsSubQuery(ArrayList<Query> subQueries, String childLevel){
+
+    public boolean addColumn(Query parentQuery, Attribute newColumn, String newLevel) {
+        if (parentQuery.level.equals(newLevel)) {
+            return parentQuery.columns.add(newColumn);
+        }else{
+            if (isImmediateChild(parentQuery.level, newLevel)) {
+
+                Query subQuery = containsSubQuery(parentQuery.subQueries, newLevel);
+
+                if(subQuery == null){
+                    subQuery = new Query(this);
+                    subQuery.level = newLevel;
+                    subQuery.columns.add(newColumn);
+                    parentQuery.subQueries.add(subQuery);
+                }else{
+                    this.addColumn(subQuery, newColumn, newLevel);
+                }
+
+            }else{
+                Query subQuery = containsSubQuery(parentQuery.subQueries, newLevel);
+
+                if (subQuery != null) {
+                    this.addColumn(subQuery, newColumn, newLevel);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean addCondition(Query parentQuery, Condition newCondition, String newLevel) {
+        if (parentQuery.level.equals(newLevel)) {
+            return parentQuery.conditions.add(newCondition);
+        }else{
+            if (isImmediateChild(parentQuery.level, newLevel)) {
+
+                Query subQuery = containsSubQuery(parentQuery.subQueries, newLevel);
+
+                if(subQuery == null){
+                    subQuery = new Query(this);
+                    subQuery.level = newLevel;
+                    subQuery.conditions.add(newCondition);
+                    parentQuery.subQueries.add(subQuery);
+                }else{
+                    this.addCondition(subQuery, newCondition, newLevel);
+                }
+
+            }else{
+                Query subQuery = containsSubQuery(parentQuery.subQueries, newLevel);
+
+                if (subQuery != null) {
+                    this.addCondition(subQuery, newCondition, newLevel);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private Query containsSubQuery(ArrayList<Query> subQueries, String childLevel) {
         Iterator<Query> subQueriesIterator = this.subQueries.iterator();
-        while(subQueriesIterator.hasNext()){
+        while (subQueriesIterator.hasNext()) {
             Query currQuery = subQueriesIterator.next();
-            if(currQuery.level.equals(childLevel)){
+            if (currQuery.level.equals(childLevel)) {
                 return currQuery;
             }
         }
@@ -83,14 +142,14 @@ public class Query {
         return null;
     }
 
-    private boolean isImmediateChild(String parentLevel, String childLevel){
+    private boolean isImmediateChild(String parentLevel, String childLevel) {
         try {
 
             String rawNoOfDotsParent[] = parentLevel.split("\\.");
             String rawNoOfDotsChild[] = childLevel.split("\\.");
 
             for (int i = 0; i < rawNoOfDotsParent.length; i++) {
-                if ( !(rawNoOfDotsParent[i].equals(rawNoOfDotsChild[i])) ) {
+                if (!(rawNoOfDotsParent[i].equals(rawNoOfDotsChild[i]))) {
                     return false;
                 }
             }
@@ -98,64 +157,10 @@ public class Query {
             if (rawNoOfDotsChild.length - 1 == rawNoOfDotsParent.length) {
                 return true;
             }
-        }catch(Exception ex){
+        } catch (Exception ex) {
             return false;
         }
 
-        return false;
-    }
-
-    public boolean addColumn(Attribute column, String currLevel){
-        if(level.equals(currLevel)){
-            return columns.add(column);
-        }else{
-            if(isImmediateChild( level, currLevel)) {
-
-                Query subQuery = containsSubQuery(this.subQueries, currLevel);
-
-                if(subQuery == null){
-                    subQuery = new Query(this);
-                    subQuery.addColumn(column, currLevel);
-                    this.subQueries.add(subQuery);
-                }else{
-                    subQuery.addColumn(column, currLevel);
-                }
-
-            }else{
-                for(Query currQuery: subQueries){
-                    if(currQuery.addColumn(column, currLevel)){
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    public boolean addCondition(Condition condition, String currLevel){
-        if(level.equals(currLevel)){
-            return conditions.add(condition);
-        }else{
-            if(isImmediateChild( level, currLevel)) {
-
-                Query subQuery = containsSubQuery(this.subQueries, currLevel);
-
-                if(subQuery == null){
-                    subQuery = new Query(this);
-                    subQuery.addCondition(condition, currLevel);
-                    this.subQueries.add(subQuery);
-                }else{
-                    subQuery.addCondition(condition, currLevel);
-                }
-
-            }else{
-                for(Query currQuery: subQueries){
-                    if(currQuery.addCondition(condition, currLevel)){
-                        return true;
-                    }
-                }
-            }
-        }
         return false;
     }
 }
