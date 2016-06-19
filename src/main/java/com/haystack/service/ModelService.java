@@ -740,11 +740,11 @@ public class ModelService {
                         keyRightTbl = condition.rightTable;
                     }
 
-                    String key = keyLeftTbl + "~" + keyRightTbl + "~" + condition.level;
+                    String key = keyLeftTbl + "~" + keyRightTbl + "~" + queryLevelObj.getLevel();
                     // Check if the table pair already has a join condition in the cache
                     Join join = localJoinHashmap.get(key);
                     if (join == null ) { // try reversing left and right table
-                        key = keyRightTbl + "~" +  keyLeftTbl+ "~" + condition.level;
+                        key = keyRightTbl + "~" + keyLeftTbl + "~" + queryLevelObj.getLevel();
                         join = localJoinHashmap.get(key);
                     }
 
@@ -755,7 +755,7 @@ public class ModelService {
                         join.leftTable = leftAttr.tableName;
                         join.rightSchema = rightAttr.schema;
                         join.rightTable = rightAttr.tableName;
-                        join.level = condition.level;
+                        join.level = queryLevelObj.getLevel();
                         JoinTuple joinTuple = new JoinTuple();
                         joinTuple.leftcolumn = leftColumn.column_name;
                         joinTuple.rightcolumn = rightColumn.column_name;
@@ -785,7 +785,7 @@ public class ModelService {
                                 joinNew.leftTable = leftAttr.tableName;
                                 joinNew.rightSchema = rightAttr.schema;
                                 joinNew.rightTable = rightAttr.tableName;
-                                joinNew.level = condition.level;
+                                joinNew.level = queryLevelObj.getLevel();
                                 joinNew.joinTuples.put(jtKey, joinTuple);
                                 localJoinHashmap.put(key,joinNew); // Put the new Join Object in the local cache
                             }
@@ -795,7 +795,7 @@ public class ModelService {
                             joinNew.leftTable = leftAttr.tableName;
                             joinNew.rightSchema = rightAttr.schema;
                             joinNew.rightTable = rightAttr.tableName;
-                            joinNew.level = condition.level;
+                            joinNew.level = queryLevelObj.getLevel();
                             joinNew.joinTuples.put(jtKey, joinTuple);
                             localJoinHashmap.put(key,joinNew); // Put the new Join Object in the local cache
                         }

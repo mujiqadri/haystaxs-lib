@@ -22,5 +22,5 @@ public class Condition {
     public String leftExpression;
     public String rightExpression;
     public String fullExpression;
-    public String level;
+    //public String level;
 }

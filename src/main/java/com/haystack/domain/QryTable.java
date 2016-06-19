@@ -12,7 +12,7 @@ public class QryTable {
     public String schema;
     public String tablename;
     public String alias;
-    public String level;
+    //public String level;
     public Integer colUsage;  // This show how many columns were used in the query projection and where clause
     public float workloadScore;
     public float workloadPercentage;

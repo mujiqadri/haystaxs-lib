@@ -15,7 +15,9 @@ import java.util.List;
  * Created by Ghaffar on 6/18/2016.
  */
 public class Query {
-    String level; //1, 1.1, 1.2, 1.2.1
+
+
+    private String level; //1, 1.1, 1.2, 1.2.1
 
     public ArrayList<QryTable> tables;
     public ArrayList<Attribute> columns;
@@ -162,5 +164,13 @@ public class Query {
         }
 
         return false;
+    }
+
+    public String getLevel() {
+        return level;
+    }
+
+    public void setLevel(String level) {
+        this.level = level;
     }
 }

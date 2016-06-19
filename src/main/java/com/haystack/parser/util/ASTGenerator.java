@@ -288,7 +288,7 @@ public class ASTGenerator implements SelectVisitor, FromItemVisitor, ExpressionV
             if (tableName.getAlias() != null) {
                 table.alias = tableName.getAlias().toString().trim();
             }
-            table.level = level;
+//            table.level = level;
             tables.add(table);
         } catch (Exception e) {
             log.error("Error in adding Table in NF:" + tableName.toString() + ": Error Msg:" + e.toString());
@@ -380,7 +380,7 @@ public class ASTGenerator implements SelectVisitor, FromItemVisitor, ExpressionV
                 return null;
             }
             Condition condition = new Condition();
-            condition.level = level;
+//            condition.level = level;
 
             BinaryExpression binaryExpression = null;
             try {
