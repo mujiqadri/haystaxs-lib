@@ -67,9 +67,18 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 //    public ArrayList<Attribute> columns;
 //    public ArrayList<Condition> conditions;
     private HashMap<String, Integer> levelsHashMap;
+    private HashMap<Integer, String> queryHashLevels;
     private List<String> otherItemNames;
 
     public Query queryLevelObj;
+
+    public String getCurrLevel() {
+        return currLevel;
+    }
+
+    public void setCurrLevel(String currLevel) {
+        this.currLevel = currLevel;
+    }
 
     private String currLevel;
 
@@ -86,9 +95,10 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 //        columns = new ArrayList<Attribute>();
 //        conditions = new ArrayList<Condition>();
         levelsHashMap = new HashMap<String, Integer>();
+        queryHashLevels = new HashMap<Integer, String>();
 
         queryLevelObj = new Query(null);
-        currLevel = "1";
+        setCurrLevel("1");
     }
 
    /* public ArrayList<Attribute> getAttributesForTable(String tablename, String schemaName) {
@@ -199,6 +209,8 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     public void getSemantics(Select select) {
         init();
         levelsHashMap.put("0", 1); // Add root element for first level
+        queryHashLevels.put(select.toString().hashCode(), "0");
+
         if (select.getWithItemsList() != null) {
             for (WithItem withItem : select.getWithItemsList()) {
                 withItem.accept(this);
@@ -215,6 +227,9 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
      */
     public void getSemantics(Update update) {
         init();
+        levelsHashMap.put("0", 1); // Add root element for first level
+        queryHashLevels.put(update.toString().hashCode(), "0");
+
         for (Table table : update.getTables()) {
             otherItemNames.add(table.getName());
 
@@ -259,6 +274,8 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     @Override
     public void visit(PlainSelect plainSelect) {
         //TODO: Populate structure in this method
+        queryHashLevels.put(plainSelect.toString().hashCode(), currLevel);
+
 
         if (plainSelect.getSelectItems() != null) {
             for (SelectItem item : plainSelect.getSelectItems()) {
@@ -355,7 +372,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             column.schema = tableColumn.getTable().getSchemaName();
             column.nameFQN = tableColumn.getFullyQualifiedName();
 
-            queryLevelObj.addColumn(column, currLevel);
+            queryLevelObj.addColumn(queryLevelObj, column, currLevel);
         } catch (Exception e) {
             log.error("Error in extracting alias for Column:" + tableColumn.getFullyQualifiedName());
         }
@@ -401,7 +418,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                             column.nameFQN = ((Column) param).getTable().getFullyQualifiedName();
                         } catch (Exception e) {
                         }
-                        queryLevelObj.addColumn(column, currLevel);
+                        queryLevelObj.addColumn(queryLevelObj, column, currLevel);
                     } catch (Exception e) {
 
                     }
@@ -488,7 +505,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                 if (condition.operator.equals("-")) { // This is projection expression donot add it to conditions
                     condition.operator = condition.operator;
                 } else{
-                    queryLevelObj.addCondition(condition, currLevel);
+                    queryLevelObj.addCondition(queryLevelObj, condition, currLevel);
                 }
             } else {
                 if (expressionClass.contains(".arithmetic") || expressionClass.contains(".Between") || expressionClass.contains(".EqualsTo")) {
@@ -506,7 +523,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                         } else {
                             condition.operator = "ISNULL";
                         }
-                        queryLevelObj.addCondition(condition, currLevel);
+                        queryLevelObj.addCondition(queryLevelObj, condition, currLevel);
                     } else {
                         condition = condition;
                         log.error("Dangling condition:" + currExpression.toString());
@@ -545,9 +562,11 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     @Override
     public void visit(SubSelect subSelect) {
         String nextLevelkey = getNextSubLevel(currLevel);
+        queryHashLevels.put(subSelect.toString().hashCode(), currLevel);
         currLevel = nextLevelkey;
 
         subSelect.getSelectBody().accept(this);
+        currLevel = queryHashLevels.get(subSelect.toString().hashCode());
     }
 
 
