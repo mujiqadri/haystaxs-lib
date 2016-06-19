@@ -227,7 +227,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                 qryTable.schema = table.getSchemaName();
             }catch(Exception ex){}
 
-            queryLevelObj.addTable(qryTable, currLevel);
+            queryLevelObj.addTable(queryLevelObj, qryTable, currLevel);
         }
         if (update.getExpressions() != null) {
             for (Expression expression : update.getExpressions()) {
@@ -334,7 +334,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             }
 //            table.level = level;
 //            tables.add(table);
-            queryLevelObj.addTable(table, currLevel);
+            queryLevelObj.addTable(queryLevelObj, table, currLevel);
         } catch (Exception e) {
             log.error("Error in adding Table in NF:" + tableName.toString() + ": Error Msg:" + e.toString());
         }

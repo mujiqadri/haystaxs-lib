@@ -42,27 +42,26 @@ public class Query {
         subQueries = new ArrayList<Query>();
     }
 
-    public boolean addTable(QryTable table, String currLevel){
-        if(level.equals(currLevel)){
-
-            return tables.add(table);
-
+    public boolean addTable(Query parentQuery, QryTable newTable, String currLevel){
+        if(parentQuery.level.equals(currLevel)){
+            return parentQuery.tables.add(newTable);
         }else{
-            if(isImmediateChild( level, currLevel)) {
+            if(isImmediateChild( parentQuery.level, currLevel)) {
 
-                Query subQuery = containsSubQuery(this.subQueries, currLevel);
+                Query subQuery = containsSubQuery(parentQuery.subQueries, currLevel);
 
                 if(subQuery == null){
                     subQuery = new Query(this);
-                    subQuery.addTable(table, currLevel);
-                    this.subQueries.add(subQuery);
+                    subQuery.level = currLevel;
+                    subQuery.tables.add(newTable);
+                    parentQuery.subQueries.add(subQuery);
                 }else{
-                    subQuery.addTable(table, currLevel);
+                    subQuery.addTable(parentQuery, newTable, currLevel);
                 }
 
             }else{
                 for(Query currQuery: subQueries){
-                    if(currQuery.addTable(table, currLevel)){
+                    if(currQuery.addTable(parentQuery, newTable, currLevel)){
                         return true;
                     }
                 }
