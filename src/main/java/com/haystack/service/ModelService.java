@@ -591,11 +591,38 @@ public class ModelService {
 
         //Resolving Columns
         for (int i = 0; i < queryLevelObj.columns.size(); i++) {
-            //TODO:
-            processProjectedColumn(queryLevelObj.columns.get(i), queryLevelObj.tables, current_search_path);
+            //TODO: Muji
+            Attribute currCol = queryLevelObj.columns.get(i);
+            if (currCol.name.equals("*")) {
+                // Check if all columns for a particular table selected or all for all tables
+                for (int j = 0; j < queryLevelObj.tables.size(); j++) {
+                    QryTable currTable = queryLevelObj.tables.get(i);
+                    if ((currCol.tableName == null) || (currCol.tableName.equals(currTable.tablename))) {
+                        // Add all Columns for this table;
+                        Table tbl = tablelist.findTable(currTable.schema, currTable.tablename);
+                        Iterator tblColIterator = tbl.columns.entrySet().iterator();
+
+                        for (Map.Entry<String, Column> entry : tbl.columns.entrySet()) {
+                            String key = entry.getKey();
+                            Column tableColumn = entry.getValue();
+                            // Create new temp Attribute Object
+                            Attribute tmpAttr = new Attribute();
+                            tmpAttr.name = tableColumn.column_name;
+                            tmpAttr.tableName = tableColumn.getResolvedTableName();
+                            tmpAttr.schema = tableColumn.getResolvedSchemaName();
+                            tmpAttr.nameFQN = tableColumn.toString();
+                            processProjectedColumn(tmpAttr, queryLevelObj.tables, current_search_path);
+                        }
+
+                    }
+                }
+
+            } else {
+                processProjectedColumn(queryLevelObj.columns.get(i), queryLevelObj.tables, current_search_path);
+            }
         }
 
-        //Resolving COnditions
+        //Resolving Conditions
         processConditions(queryLevelObj, current_search_path);
 
         //TODO: Ek weekend tayl karna hay
@@ -931,7 +958,8 @@ public class ModelService {
         try
         {
             // For Debugging
-            if (attribute.name.equals("sales_cnt")){
+            if (attribute.name.equals("*")) {
+                // Add all columns
                 attribute = attribute;
             }
             Column resolvedColumn = resolveColumn(attribute, tables, current_search_path);

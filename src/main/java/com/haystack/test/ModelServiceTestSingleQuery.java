@@ -155,7 +155,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
                         "                  ws_sold_date_sk = d_date_sk and\n" +
                         "                  d_year = 2002 and\n" +
                         "                  d_moy between 4 ANd 4+3) or \n" +
-                        "    exists (select * \n" +
+                        "    exists (select catalog_sales.* \n" +
                         "            from catalog_sales,date_dim\n" +
                         "            where c.c_customer_sk = cs_ship_customer_sk and\n" +
                         "                  cs_sold_date_sk = d_date_sk and\n" +

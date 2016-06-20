@@ -379,6 +379,25 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     }
 
     @Override
+    public void visit(AllColumns allColumns) {
+        Attribute column = new Attribute();
+        column.name = "*";
+        column.tableName = null;
+        column.schema = null;
+        column.nameFQN = "*";
+        queryLevelObj.addColumn(queryLevelObj, column, currLevel);
+    }
+
+    @Override
+    public void visit(AllTableColumns allTableColumns) {
+        Attribute column = new Attribute();
+        column.name = "*";
+        column.tableName = allTableColumns.getTable().toString();
+        column.schema = allTableColumns.getTable().getSchemaName();
+        column.nameFQN = allTableColumns.toString();
+        queryLevelObj.addColumn(queryLevelObj, column, currLevel);
+    }
+    @Override
     public void visit(Function function) {
         // 17-June-2015 Muji - Extract columns from the function
         try {
@@ -827,14 +846,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 
     @Override
     public void visit(JsonExpression jsonExpr) {
-    }
-
-    @Override
-    public void visit(AllColumns allColumns) {
-    }
-
-    @Override
-    public void visit(AllTableColumns allTableColumns) {
     }
 
 
