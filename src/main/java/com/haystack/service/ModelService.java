@@ -174,7 +174,8 @@ public class ModelService {
                     //     if not then recommend DK which is used in joins (higher workload score) for larger tables
                     Iterator<Map.Entry<String, Join>> joins = currTable.joins.entrySet().iterator();
                     float maxConfidence = -1;
-                    ArrayList<String> maxConfidenceCandidateDK = new ArrayList<String>();
+//                    ArrayList<String> maxConfidenceCandidateDK = new ArrayList<String>();
+                    HashMap<String, Float> maxConfidenceCandidateDK = new HashMap<String, Float>(); //Key = Column Name, Value = Confidence of Column
 
                     while (joins.hasNext()) {
 
@@ -185,9 +186,11 @@ public class ModelService {
                         if (currJoin.getConfidence() > maxConfidence) {  // Current Join Usage Score is greater makes this the max one
                             for (Map.Entry<String, JoinTuple> entryJT : currJoin.joinTuples.entrySet()) {
                                 if (currTable.tableName.equals(currJoin.leftTable)) {  // Add left column
-                                    maxConfidenceCandidateDK.add(entryJT.getValue().leftcolumn);
+//                                    maxConfidenceCandidateDK.add(entryJT.getValue().leftcolumn);
+                                    maxConfidenceCandidateDK.put(entryJT.getValue().leftcolumn, currJoin.getConfidence());
                                 } else { // Add Right Column
-                                    maxConfidenceCandidateDK.add(entryJT.getValue().rightcolumn);
+//                                    maxConfidenceCandidateDK.add(entryJT.getValue().rightcolumn);
+                                    maxConfidenceCandidateDK.put(entryJT.getValue().rightcolumn, currJoin.getConfidence());
                                 }
                             }
                             maxConfidence = currJoin.getConfidence();
@@ -213,16 +216,21 @@ public class ModelService {
                         }
                     }
                     // A.1) Get Distribution Key, if it matches the candidateDK then ignore else add Recommendation with the CandidateDK
-                    String recKey = "";
+
+                    //By Ghaffar: 21/6/2016
+                    //I have commented-out the old code because it have some bugs.
+                    //TODO: remove after conformation from mujtaba
+
+                    /*String recKey = "";
                     for (String currCol : maxConfidenceCandidateDK) {
                         if (recKey.length() == 0) {
                             recKey = currCol;
                         } else {
                             recKey += "," + currCol;
                         }
-                    }
+                    }*/
 
-                    for (String candidateColumn : maxConfidenceCandidateDK) {
+                    /*for (String candidateColumn : maxConfidenceCandidateDK) {
                         if (currTable.dk.containsKey(candidateColumn) == false) {
                             // DK and Candidate Key Mismatch, add recommendation for Candidate Key
                             Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
@@ -231,9 +239,24 @@ public class ModelService {
                             tablelist.recommendations.put(recId.toString(), recommendation);
                             recId++;
                         }
+                    }*/
+
+                    Iterator<Map.Entry<String, Float>> maxConfidenceCandidateDKIterator = maxConfidenceCandidateDK.entrySet().iterator();
+
+                    while(maxConfidenceCandidateDKIterator.hasNext()){
+                        Map.Entry<String, Float> columnAndConfidenceValue = maxConfidenceCandidateDKIterator.next();
+                        String candidateColumn = columnAndConfidenceValue.getKey();
+                        Float confidenceOfColumn = columnAndConfidenceValue.getValue();
+
+                        if (currTable.dk.containsKey(candidateColumn) == false) {
+                            // DK and Candidate Key Mismatch, add recommendation for Candidate Key
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
+                            recommendation.description = "Distribution key should be set to " + candidateColumn;
+                            recommendation.anamoly = "Confidence for new key:" + confidenceOfColumn;
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
                     }
-
-
                 }
                 // Objective Measure of Interestingness, Recommendation should be generated for only TopNPercent of tables
                 // B) Columnar & Compression Rule:
