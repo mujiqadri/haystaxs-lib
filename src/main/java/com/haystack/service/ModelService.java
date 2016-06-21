@@ -52,7 +52,6 @@ public class ModelService {
 
     static Logger log = LoggerFactory.getLogger(ModelService.class.getName());
     static Tables tablelist;
-    private Integer gpsd_id;
     private Date wl_start_date;
     private Date wl_end_date;
     private Date model_creation_date;
@@ -79,12 +78,6 @@ public class ModelService {
         this.tablelist = tbllist;
     }
 
-
-    public void generateRecommendations(int gpsd_id){
-        this.gpsd_id = gpsd_id;
-        generateRecommendations();
-    }
-
     private int getDistinctNoOfRows(String schema, String tableName, String columnName, Credentials credentials) throws SQLException, IOException, ClassNotFoundException {
 
         dbConnectService.setCredentials(credentials);
@@ -103,7 +96,7 @@ public class ModelService {
         return totalNoDistinctValues;
     }
 
-    private Credentials getCredentials() throws IOException, SQLException, ClassNotFoundException {
+    private Credentials getCredentials(int gpsd_id) throws IOException, SQLException, ClassNotFoundException {
         ConfigProperties configProperties = new ConfigProperties();
         configProperties.loadProperties();
 
@@ -156,11 +149,11 @@ public class ModelService {
         recommendation.type = type;
         return recommendation;
     }
-    public void generateRecommendations() {
+    public void generateRecommendations(int gpsd_id){
 
         try {
 
-            Credentials credentials = getCredentials();
+            Credentials credentials = getCredentials(gpsd_id);
 
             // Fetch Recommendation Engine settings from config.properties file
             Double columnarThresholdPercent = Double.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
@@ -414,6 +407,7 @@ public class ModelService {
                 }
                 currTable.stats.setModelScore(workloadScore);
 
+                //TODO: Ghaffar: Is Average Calculation right?
                 // Calculate Average Column Usage
                 try {
                     // Calculate confidence for all joins, using Confidence = Support x (LeftTableWeight + RightTableWeight)
