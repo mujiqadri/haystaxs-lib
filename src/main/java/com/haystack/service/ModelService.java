@@ -575,7 +575,7 @@ public class ModelService {
                 throw new Exception("Statement Not Supported :" + statement.toString());
             }
 
-            resolve(currtablesNF.queryLevelObj, current_search_path);
+            resolve(currtablesNF.queryLevelObj, executionTime, current_search_path);
 
             log.debug("=============== CONDITIONS EXTRACTED =================");
 
@@ -590,7 +590,7 @@ public class ModelService {
         }
     }
 
-    public boolean resolve(com.haystack.visitor.Query queryLevelObj, String current_search_path){
+    public boolean resolve(com.haystack.visitor.Query queryLevelObj, double executionTime, String current_search_path){
 
         //Resolving tables
         for (int i = 0; i < queryLevelObj.tables.size(); i++) {
@@ -644,13 +644,13 @@ public class ModelService {
 
         //TODO: Ek weekend tayl karna hay
         //Date: 18/6/2016
-//        divideTimeAmongstTables(queryLevelObj, executionTime);
+        divideTimeAmongstTables(queryLevelObj, executionTime);
 
         Iterator<com.haystack.visitor.Query> subQueriesIterator = queryLevelObj.subQueries.iterator();
 
         while(subQueriesIterator.hasNext()){
             com.haystack.visitor.Query currentSubQuery = subQueriesIterator.next();
-            resolve(currentSubQuery, current_search_path);
+            resolve(currentSubQuery, executionTime, current_search_path);
         }
 
         return false;
