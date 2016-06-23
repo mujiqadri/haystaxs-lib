@@ -175,7 +175,13 @@ public class ModelService {
                     Iterator<Map.Entry<String, Join>> joins = currTable.joins.entrySet().iterator();
                     float maxConfidence = -1;
 //                    ArrayList<String> maxConfidenceCandidateDK = new ArrayList<String>();
-                    HashMap<String, Float> maxConfidenceCandidateDK = new HashMap<String, Float>(); //Key = Column Name, Value = Confidence of Column
+                    TreeMap<Float, String> maxConfidenceCandidateDK = new TreeMap<Float, String>(new Comparator<Float>() {
+                        @Override
+                        public int compare(Float o1, Float o2) {
+                            //Sorting in decending order.
+                            return o2.compareTo(o1);
+                        }
+                    }); //Key = Confidence of Column, Value = Name Of Column
 
                     while (joins.hasNext()) {
 
@@ -187,10 +193,10 @@ public class ModelService {
                             for (Map.Entry<String, JoinTuple> entryJT : currJoin.joinTuples.entrySet()) {
                                 if (currTable.tableName.equals(currJoin.leftTable)) {  // Add left column
 //                                    maxConfidenceCandidateDK.add(entryJT.getValue().leftcolumn);
-                                    maxConfidenceCandidateDK.put(entryJT.getValue().leftcolumn, currJoin.getConfidence());
+                                    maxConfidenceCandidateDK.put(currJoin.getConfidence(), entryJT.getValue().leftcolumn);
                                 } else { // Add Right Column
 //                                    maxConfidenceCandidateDK.add(entryJT.getValue().rightcolumn);
-                                    maxConfidenceCandidateDK.put(entryJT.getValue().rightcolumn, currJoin.getConfidence());
+                                    maxConfidenceCandidateDK.put(currJoin.getConfidence(), entryJT.getValue().rightcolumn);
                                 }
                             }
                             maxConfidence = currJoin.getConfidence();
@@ -241,23 +247,42 @@ public class ModelService {
                         }
                     }*/
 
-                    Iterator<Map.Entry<String, Float>> maxConfidenceCandidateDKIterator = maxConfidenceCandidateDK.entrySet().iterator();
+                    Iterator<Map.Entry<Float, String>> maxConfidenceCandidateDKIterator = maxConfidenceCandidateDK.entrySet().iterator();
+
+                    String recDescTxt = "";
+                    String recAnamolyTxt = "";
 
                     while(maxConfidenceCandidateDKIterator.hasNext()){
-                        Map.Entry<String, Float> columnAndConfidenceValue = maxConfidenceCandidateDKIterator.next();
-                        String candidateColumn = columnAndConfidenceValue.getKey();
-                        Float confidenceOfColumn = columnAndConfidenceValue.getValue();
+                        Map.Entry<Float, String> columnAndConfidenceValue = maxConfidenceCandidateDKIterator.next();
+                        Float confidenceOfColumn = columnAndConfidenceValue.getKey();
+                        String candidateColumn = columnAndConfidenceValue.getValue();
 
                         if (currTable.dk.containsKey(candidateColumn) == false) {
                             // DK and Candidate Key Mismatch, add recommendation for Candidate Key
-                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
-                            recommendation.description = "Distribution key should be set to " + candidateColumn;
-                            recommendation.anamoly = "Confidence for new key:" + confidenceOfColumn;
-                            tablelist.recommendations.put(recId.toString(), recommendation);
-                            recId++;
+                            recDescTxt += candidateColumn +",";
+                            recAnamolyTxt += candidateColumn +": " +confidenceOfColumn +",";
                         }
                     }
+
+                    //if recDescTxt ends with ',' then remove the trailling ','
+                    if(recDescTxt.endsWith(",")){
+                        recDescTxt = recDescTxt.substring(0, recDescTxt.lastIndexOf(","));
+                    }
+
+                    if(recAnamolyTxt.endsWith(",")){
+                        recAnamolyTxt = recAnamolyTxt.substring(0, recAnamolyTxt.lastIndexOf(","));
+                    }
+
+                    //If recDescTxt is not empty that mean it contain a column which need to be recommended
+                    if(recDescTxt.isEmpty() == false){
+                        Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
+                        recommendation.description = "Distribution key should be set to " +recDescTxt +".";
+                        recommendation.anamoly = "Confidence of key(s) " +recAnamolyTxt +".";
+                        tablelist.recommendations.put(recId.toString(), recommendation);
+                        recId++;
+                    }
                 }
+
                 // Objective Measure of Interestingness, Recommendation should be generated for only TopNPercent of tables
                 // B) Columnar & Compression Rule:
                 //     Check to see if less than 30% (rs.ColumnarThresholdPercent) of attributes are used,
