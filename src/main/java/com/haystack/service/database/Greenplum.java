@@ -125,7 +125,7 @@ public class Greenplum extends Cluster {
 
             Integer currCounter = 0;
             Integer lastPercentageUpdated = -1;
-
+            Integer noOfTablesWithZeroSize = 0;
 
             while (rsTbl.next()) {   // Fetch all parent level tables, if table is partitioned then load all Partitions
                 currCounter++;
@@ -220,6 +220,19 @@ public class Greenplum extends Cluster {
                         tbl.stats.sizeUnCompressed = tbl.stats.sizeOnDisk;
                         tbl.stats.sizeForDisplayCompressed = getSizePretty(tbl.stats.sizeOnDisk); // Normalize size and unit to display atleast 2 digits
                         tbl.stats.sizeForDisplayUnCompressed = getSizePretty(tbl.stats.sizeUnCompressed); // Normalize size and unit to display atleast 2 digits
+                    }
+
+                    //If size of the table is 0
+                    if(tbl.stats.sizeUnCompressed == 0){
+                        noOfTablesWithZeroSize++;
+
+                        //calculate the percentage of those tables which have 0 size
+                        float percentage = (noOfTablesWithZeroSize / totalNoOfQueries) * 100;
+
+                        //if percentage is 25% then throw an exception
+                        if(percentage == 25.0f){
+                            throw new RuntimeException("Statistics not collected, please run Analyze on the Tables");
+                        }
                     }
 
                     // Get Column Details
