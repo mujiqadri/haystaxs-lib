@@ -110,17 +110,29 @@ import java.util.Properties;
     }
 
     // Refresh method checks the
-    public boolean refresh(Integer clusterId) {
+    public boolean refreshSchemaAndQueryLogs(Integer clusterId) {
 
         String queryRefreshSchedule = "", schemaRefreshSchedule = "";
         String clusterType;
         Cluster cluster;
         Credentials clusterCred; // Credentials for the Cluster we need to connect to
 
-
-        // Fetch cluster details from HayStack Schema
         try {
-            String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+
+            //Get current refresh status of this cluster
+            String sql = "SELECT is_refreshing FROM " +haystackSchema +".gpsd WHERE gpsd_id = " +clusterId;
+            ResultSet resultSet = dbConnect.execQuery(sql);
+
+            resultSet.next();
+            Boolean isAlreadyRefreshing = resultSet.getBoolean("is_refreshing");
+
+            //If cluster is refreshing already then don't execute further just return.
+            if(isAlreadyRefreshing) {
+                return false;
+            }
+
+            // Fetch cluster details from HayStack Schema
+            sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
                     " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
                     ".gpsd where host is not null and is_active = true and gpsd_id = " + clusterId + ";";
             ResultSet rs = dbConnect.execQuery(sql);
@@ -170,6 +182,10 @@ import java.util.Properties;
                         continue;
                     }
 
+                    //Set is_refreshing to TRUE for this cluster so that 2nd refresh do not start until current refresh finishes.
+                    sql = "UPDATE " +haystackSchema +".gpsd SET is_refreshing = true WHERE gpsd_id = " + clusterId;
+                    dbConnect.execNoResultSet(sql);
+
                     Integer queryRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("query.refresh.interval.hours"));
                     // Add Refresh Interval to Last refresh time and then check
                     Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
@@ -182,6 +198,11 @@ import java.util.Properties;
                     if (lastSchemaRefreshTime.compareTo(currentTime) < 0) {// if this time is less than current_time, if yes then refresh schema
                         Tables tables = cluster.loadTables(clusterCred, isGPSD, clusterId);
                     }
+
+                    //Set is_refreshing to FALSE for this cluster so that user can perform refresh again.
+                    sql = "UPDATE " + haystackSchema +".gpsd SET is_refreshing = false WHERE gpsd_id = " + clusterId;
+                    dbConnect.execNoResultSet(sql);
+
                 } catch (Exception e) {
                     log.error("Error in refreshing cluster gpsd_id= " + clusterId + " Exception=" + e.toString());
                 }
@@ -192,6 +213,7 @@ import java.util.Properties;
             log.error("Error in fetching cluster from " + haystackSchema + " schema.");
             return false;
         }
+
         return true;
     }
 

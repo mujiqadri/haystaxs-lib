@@ -224,9 +224,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
     public void testRefresh() throws Exception {
 
-
         Integer clusterId = 37;
-
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -234,7 +232,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
 
         ClusterService clusterService = new ClusterService(configProperties);
 
-        clusterService.refresh(clusterId);
+        clusterService.refreshSchemaAndQueryLogs(clusterId);
     }
 
     public void testWorkload() throws Exception {

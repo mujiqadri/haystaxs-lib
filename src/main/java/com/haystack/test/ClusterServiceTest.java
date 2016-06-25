@@ -26,7 +26,7 @@ public class ClusterServiceTest extends TestCase {
 
         ClusterService clusterService = new ClusterService(configProperties);
 
-        clusterService.refresh(5);
+        clusterService.refreshSchemaAndQueryLogs(5);
     }
 
     public void testWorkloadprocess() throws Exception{
