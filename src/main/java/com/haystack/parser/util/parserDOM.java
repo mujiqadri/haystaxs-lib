@@ -47,6 +47,7 @@ import net.sf.jsqlparser.statement.replace.Replace;
 import net.sf.jsqlparser.statement.select.*;
 import net.sf.jsqlparser.statement.update.Update;
 
+import java.net.Inet4Address;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -543,7 +544,18 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
                             condition.operator = "ISNULL";
                         }
                         queryLevelObj.addCondition(queryLevelObj, condition, currLevel);
+                    } else if (expressionClass.endsWith("relational.InExpression")) {
+                        InExpression inExpression = (InExpression) currExpression;
+                        condition.fullExpression = currExpression.toString();
+                        condition.leftExpression = inExpression.getLeftExpression().toString();
+                        condition.rightExpression = inExpression.getRightItemsList().toString();
+                        condition.leftTable = ((Column) inExpression.getLeftExpression()).getTable().getName();
+                        condition.leftColumn = ((Column) inExpression.getLeftExpression()).getColumnName().toString();
+                        condition.isJoin = false;
+                        condition.operator = "IN";
+
                     } else {
+                        // TODO: CaseExpression evaluate if we need to convert this into a where condition
                         condition = condition;
                         log.error("Dangling condition:" + currExpression.toString());
                     }

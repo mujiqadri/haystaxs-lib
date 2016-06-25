@@ -877,19 +877,21 @@ public class ModelService {
 //                    attribute.level = condition.level;
                     Column col = resolveColumnForJoin(attribute, queryLevelObj, current_search_path); // Get Column Object
 
-                    col.whereConditionValue.put(condition.rightValue, condition.fullExpression);
+                    if (col != null) {
+                        col.whereConditionValue.put(condition.rightValue, condition.fullExpression);
 
-                    Object doesKeyExist = col.whereConditionFreq.get(condition.rightValue);
+                        Object doesKeyExist = col.whereConditionFreq.get(condition.rightValue);
 
-                    if (doesKeyExist == null ){
-                        col.whereConditionFreq.put(condition.rightValue, 1);
-                    } else {
-                        Integer currFreq = 0;
-                        currFreq = col.whereConditionFreq.get(condition.rightValue).intValue();
-                        col.whereConditionFreq.put(condition.rightValue, currFreq+1);
+                        if (doesKeyExist == null) {
+                            col.whereConditionFreq.put(condition.rightValue, 1);
+                        } else {
+                            Integer currFreq = 0;
+                            currFreq = col.whereConditionFreq.get(condition.rightValue).intValue();
+                            col.whereConditionFreq.put(condition.rightValue, currFreq + 1);
+                        }
+
+                        col.incrementWhereUsageScore();
                     }
-
-                    col.incrementWhereUsageScore();
                 }
 
             } catch (Exception e) {
