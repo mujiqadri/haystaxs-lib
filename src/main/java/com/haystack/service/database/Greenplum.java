@@ -1,6 +1,7 @@
 package com.haystack.service.database;
 
 import com.haystack.domain.*;
+import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
 
@@ -47,6 +48,10 @@ public class Greenplum extends Cluster {
         Integer maxGPSDLogId = 0;
         String jsonResult = "";
         try {
+            ConfigProperties configProperties = new ConfigProperties();
+            configProperties.loadProperties();
+            double analyzePercentage = Double.parseDouble(configProperties.properties.getProperty("table.AnalyzePercentage"));
+
             dbConn = new DBConnectService(this.dbtype);
             dbConn.connect(credentials);
 
@@ -229,8 +234,8 @@ public class Greenplum extends Cluster {
                         //calculate the percentage of those tables which have 0 size
                         float percentage = (noOfTablesWithZeroSize / totalNoOfQueries) * 100;
 
-                        //if percentage is 25% then throw an exception
-                        if(percentage == 25.0f){
+                        //if percentage  25% or greater then throw an exception
+                        if(percentage >= analyzePercentage){
                             throw new RuntimeException("Statistics not collected, please run Analyze on the Tables");
                         }
                     }
