@@ -261,6 +261,10 @@ public class CatalogService {
             //sql = "update " + haystackSchema + ".workloads set model_json ='" + model_json + "' where workload_id =" + workloadId + ";";
             //dbConnect.execNoResultSet(sql);
 
+            //Save generated json into the workloads_json table so that it can be accessed from anywhere
+            sql = "INSERT INTO " +haystackSchema +".workloads_json (workload_id, workload_json) VALUES(" +workloadId +",'" +model_json +"')";
+            int r = dbConnect.execNoResultSet(sql);
+
             return model_json;
 
         } catch (Exception e) {
@@ -276,6 +280,25 @@ public class CatalogService {
     }
 
 
+    public String getWorkloadJSON(int workloadId){
+        String workloadJSON = "";
+
+        String sql = "SELECT workload_json FROM " +haystackSchema+".workloads_json WHERE workload_id = " + workloadId;
+        try {
+            ResultSet result = dbConnect.execQuery(sql);
+
+            if(result.next()){
+                workloadJSON = result.getString("workload_json");
+                return workloadJSON;
+            }
+            result.close();
+
+        } catch (SQLException e) {
+            log.error("Error wile getting workload json for workload: " +workloadId + " Exception:" +e.toString());
+        }
+
+        return  null;
+    }
 
     private void updatePercentProcessedWorkload(int currProcessingPercent, Integer workloadId) {
         try {

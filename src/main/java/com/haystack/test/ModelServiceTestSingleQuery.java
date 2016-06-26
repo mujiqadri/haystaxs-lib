@@ -250,4 +250,23 @@ public class ModelServiceTestSingleQuery extends TestCase {
         System.out.print("test finished");
     }
 
+    public void testGetWorkloadJsonMethod() throws  Exception{
+
+        Integer workloadId = 32;   // 35 for tpc-ds, 20 for citi queries
+
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        CatalogService catalogService = new CatalogService(configProperties);
+
+        catalogService.processWorkload(workloadId);
+
+        String result = catalogService.getWorkloadJSON(32);
+
+        System.out.println("JSON: " +result);
+
+        System.out.print("test finished");
+    }
+
 }
