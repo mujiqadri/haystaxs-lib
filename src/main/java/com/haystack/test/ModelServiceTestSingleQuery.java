@@ -8,11 +8,17 @@ import com.haystack.service.CatalogService;
 import com.haystack.service.ClusterService;
 import com.haystack.service.ModelService;
 import com.haystack.service.database.Cluster;
+import com.haystack.service.database.Greenplum;
 import com.haystack.util.ConfigProperties;
+import com.haystack.util.Credentials;
+import com.haystack.util.DBConnectService;
 import junit.framework.TestCase;
 import com.haystack.domain.Query;
 
+import java.io.IOException;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -273,4 +279,48 @@ public class ModelServiceTestSingleQuery extends TestCase {
         System.out.print("test finished");
     }
 
+    public void testGreenplumLoadQuries() throws SQLException, IOException, ClassNotFoundException {
+
+        ConfigProperties configProperties = new ConfigProperties();
+        configProperties.loadProperties();
+        String haystackSchema = configProperties.properties.getProperty("main.schema");
+
+        int clusterId = 37;
+
+        String sql = "select cluster_id, cluster_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+                " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
+                ".cluster where host is not null and is_active = true and cluster_id = " + clusterId + ";";
+
+        DBConnectService dbConn = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
+        dbConn.connect(configProperties.getHaystackDBCredentials());
+        ResultSet rs = dbConn.execQuery(sql);
+
+        rs.next();
+
+        String sHost = rs.getString("host");
+        String dbname = rs.getString("dbname");
+        String username = rs.getString("username");
+        String password = rs.getString("password");
+        Integer port = rs.getInt("port");
+        Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
+        Timestamp currentTime = rs.getTimestamp("current_time");
+
+        Credentials clusterCred = new Credentials();
+        clusterCred.setDatabase(dbname);
+        clusterCred.setHostName(sHost);
+        clusterCred.setPassword(password);
+        clusterCred.setPort(""+port);
+        clusterCred.setUserName(username);
+
+        Greenplum cluster = new Greenplum();
+        cluster.connect(clusterCred);
+
+        Integer queryRefreshIntervalHours = Integer.parseInt(configProperties.properties.getProperty("query.refresh.interval.hours"));
+        // Add Refresh Interval to Last refresh time and then check
+        Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
+
+        if (newQueryRefreshTime.compareTo(currentTime) < 0) { // if this time is less than current_time, if yes then refresh queries
+            cluster.loadQueries(clusterId, lastQueryRefreshTime);
+        }
+    }
 }

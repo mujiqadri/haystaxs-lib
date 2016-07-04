@@ -544,7 +544,7 @@ public class Greenplum extends Cluster {
 
 
             PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchema + ".queries  ( logsession, "
-                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, gpsd_id, qrytype, query_log_id) "
+                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, cluster_id, qrytype, query_log_id) "
                     + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
             Integer currCounter = 0;
@@ -641,7 +641,7 @@ public class Greenplum extends Cluster {
             try {
                 haystackDBConn.execNoResultSet(sql);
             } catch (Exception e1) {
-                log.error("Error is updating query_log table for GPSD_ID" + clusterId + " Err=" + e1.toString());
+                log.error("Error is updating query_log table for Cluster_ID" + clusterId + " Err=" + e1.toString());
 
             }
         }
