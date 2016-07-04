@@ -35,7 +35,7 @@ public class GPSDTest extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        String json = catalogService.getGPSDJson(32);
+        String json = catalogService.getClusterJson(32);
 
         System.out.print(json);
     }

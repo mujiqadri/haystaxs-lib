@@ -41,11 +41,11 @@ public class Greenplum extends Cluster {
     // should be extracted from the stats - call getTableDetailsfromStats
 
     @Override
-    public Tables loadTables(Credentials credentials, Boolean isGPSD, Integer gpsd_id) {
+    public Tables loadTables(Credentials credentials, Boolean isGPSD, Integer cluster_id) {
 
         Tables tables = new Tables();
 
-        Integer maxGPSDLogId = 0;
+        Integer maxClusterLogId = 0;
         String jsonResult = "";
         try {
             ConfigProperties configProperties = new ConfigProperties();
@@ -56,10 +56,10 @@ public class Greenplum extends Cluster {
             dbConn.connect(credentials);
 
             String sql = "select user_name, B.user_id, C.dbname\n" +
-                    "from " + haystackSchema + ".gpsd_users A, " + haystackSchema + ".users B, " + haystackSchema + ".gpsd C\n" +
+                    "from " + haystackSchema + ".cluster_users A, " + haystackSchema + ".users B, " + haystackSchema + ".cluster C\n" +
                     "where A.user_id = B.user_id  \n" +
-                    "and A.gpsd_id = C.gpsd_id\n" +
-                    "and A.gpsd_id = " + gpsd_id;
+                    "and A.cluster_id = C.cluster_id\n" +
+                    "and A.cluster_id = " + cluster_id;
 
             ResultSet rsUser = haystackDBConn.execQuery(sql);
             rsUser.next();
@@ -69,16 +69,16 @@ public class Greenplum extends Cluster {
 
             // Get Max GPSDLogId
             sql = "select nextval('" + haystackSchema + ".seq_gpsd_log');";
-            ResultSet rsGPSDLogId = haystackDBConn.execQuery(sql);
-            rsGPSDLogId.next();
+            ResultSet rsClusterLogId = haystackDBConn.execQuery(sql);
+            rsClusterLogId.next();
 
-            maxGPSDLogId = rsGPSDLogId.getInt(1);
+            maxClusterLogId = rsClusterLogId.getInt(1);
 
             // Insert record in QUERY_LOG table
-            sql = "INSERT INTO " + haystackSchema + ".gpsd_logs(gpsd_log_id, user_id, status, original_file_name," +
-                    " file_checksum,submitted_on, gpsd_id) VALUES (" + maxGPSDLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH HOST=" + credentials.getHostName() +
+            sql = "INSERT INTO " + haystackSchema + ".cluster_logs(cluster_log_id, user_id, status, original_file_name," +
+                    " file_checksum,submitted_on, cluster_id) VALUES (" + maxClusterLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH HOST=" + credentials.getHostName() +
                     " Database=" + credentials.getDatabase() + "'," +
-                    " '" + maxGPSDLogId + "=' || now(), now()," + gpsd_id + " );";
+                    " '" + maxClusterLogId + "=' || now(), now()," + cluster_id + " );";
             haystackDBConn.execNoResultSet(sql);
 
             String sqlTbl = "\t\tSELECT tbl.oid as table_oid, sch.nspname as schema_name, relname as table_name,\n" +
@@ -137,7 +137,7 @@ public class Greenplum extends Cluster {
 
                 Integer currPercentage = (currCounter * 100 / totalNoOfQueries);
                 if (currPercentage > lastPercentageUpdated) {
-                    sql = "UPDATE " + haystackSchema + ".gpsd_logs SET last_updated = now(), percent_processed = " + currPercentage + " where gpsd_log_id = " + maxGPSDLogId + ";";
+                    sql = "UPDATE " + haystackSchema + ".cluster_logs SET last_updated = now(), percent_processed = " + currPercentage + " where cluster_log_id = " + maxClusterLogId + ";";
                     haystackDBConn.execNoResultSet(sql);
                     lastPercentageUpdated = currPercentage;
                 }
@@ -285,7 +285,7 @@ public class Greenplum extends Cluster {
 
             // Check if last gpsd_refresh_time is greater than interval
             sql = "select coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on , now() as current_time  from " + haystackSchema +
-                    ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id + ";";
+                    ".cluster where host is not null and is_active = true and cluster_id = " + cluster_id + ";";
             ResultSet rs = haystackDBConn.execQuery(sql);
             rs.next();
             Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
@@ -293,11 +293,11 @@ public class Greenplum extends Cluster {
             Integer schemaRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("schema.refresh.interval.hours"));
             lastSchemaRefreshTime.setTime(lastSchemaRefreshTime.getTime() + (schemaRefreshIntervalHours * 60 * 60 * 1000));
             if (lastSchemaRefreshTime.compareTo(currentTime) < 0) {// if this time is less than current_time, if yes then refresh schema
-                super.saveGpsdStats(maxGPSDLogId, tables);
-                sql = "update " + haystackSchema + ".gpsd set last_schema_refreshed_on = now () where gpsd_id = " + gpsd_id + ";";
+                super.saveClusterStats(maxClusterLogId, tables);
+                sql = "update " + haystackSchema + ".cluster set last_schema_refreshed_on = now () where cluster_id = " + cluster_id + ";";
                 haystackDBConn.execNoResultSet(sql);
             }
-            sql = "UPDATE " + haystackSchema + ".gpsd_logs SET status = 'COMPLETED', completed_on = now() where gpsd_log_id = " + maxGPSDLogId + ";";
+            sql = "UPDATE " + haystackSchema + ".cluster_logs SET status = 'COMPLETED', completed_on = now() where cluster_log_id = " + maxClusterLogId + ";";
             haystackDBConn.execNoResultSet(sql);
 
         } catch (Exception e) {
@@ -451,10 +451,10 @@ public class Greenplum extends Cluster {
         Integer maxQryLogId = -1;
         try {
             sql = "select user_name, B.user_id, C.dbname\n" +
-                    "from " + haystackSchema + ".gpsd_users A, " + haystackSchema + ".users B, " + haystackSchema + ".gpsd C\n" +
+                    "from " + haystackSchema + ".cluster_users A, " + haystackSchema + ".users B, " + haystackSchema + ".cluster C\n" +
                     "where A.user_id = B.user_id \n" +
-                    "and A.gpsd_id = C.gpsd_id\n" +
-                    "and A.gpsd_id = " + clusterId;
+                    "and A.cluster_id = C.cluster_id\n" +
+                    "and A.cluster_id = " + clusterId;
 
             ResultSet rsUser = haystackDBConn.execQuery(sql);
             rsUser.next();
@@ -472,7 +472,7 @@ public class Greenplum extends Cluster {
 
             // Insert record in QUERY_LOG table
             sql = "INSERT INTO " + haystackSchema + ".query_logs(query_log_id, user_id, status, original_file_name," +
-                    " file_checksum,submitted_on, gpsd_id) VALUES (" + maxQryLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH HOST=" + super.gpsd_Credentials.getHostName() +
+                    " file_checksum,submitted_on, cluster_id) VALUES (" + maxQryLogId + "," + userId + ",'SUBMITTED','SCHEDULED_REFRESH HOST=" + super.gpsd_Credentials.getHostName() +
                     " Database=" + gpsd_dbName + "'," +
                     " '" + maxQryLogId + "=' || now(), now()," + clusterId + " );";
             haystackDBConn.execNoResultSet(sql);
@@ -629,14 +629,14 @@ public class Greenplum extends Cluster {
             haystackDBConn.execNoResultSet(sql);
 
             // Update gpsd with query refresh date
-            sql = "UPDATE " + haystackSchema + ".gpsd set last_queries_refreshed_on = now() where gpsd_id =" + clusterId + ";";
+            sql = "UPDATE " + haystackSchema + ".cluster set last_queries_refreshed_on = now() where cluster_id =" + clusterId + ";";
             haystackDBConn.execNoResultSet(sql);
 
             sql = "UPDATE " + haystackSchema + ".query_logs SET status = 'COMPLETED', completed_on = now() where query_log_id = " + maxQryLogId + ";";
             haystackDBConn.execNoResultSet(sql);
 
         } catch (Exception e) {
-            log.error("Error is loading Queries for GPSD_ID" + clusterId);
+            log.error("Error is loading Queries for CLUSTER_ID" + clusterId +" Exception: " +e.toString());
             sql = "UPDATE " + haystackSchema + ".query_logs SET status = 'ERROR', last_updated = now() where query_log_id = " + maxQryLogId + ";";
             try {
                 haystackDBConn.execNoResultSet(sql);

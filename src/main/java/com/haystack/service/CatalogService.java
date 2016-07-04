@@ -51,20 +51,20 @@ public class CatalogService {
     }
 
 
-    public String getGPSDJson(int gpsd_id) {
+    public String getClusterJson(int cluster_id) {
 
         Integer user_id = null;
         String json = "";
         try {
-            String sql = "select A.gpsd_db, C.user_id, C.user_name\n" +
-                    "from " + haystackSchema + ".gpsd A , " + haystackSchema + ".users C \n" +
-                    "where C.user_id = A.user_id AND A.gpsd_id = " + gpsd_id;
+            String sql = "select A.cluster_db, C.user_id, C.user_name\n" +
+                    "from " + haystackSchema + ".cluster A , " + haystackSchema + ".users C \n" +
+                    "where C.user_id = A.user_id AND A.cluster_id = " + cluster_id;
 
             ResultSet rs = dbConnect.execQuery(sql);
 
             rs.next();
 
-            String gpsd_db = rs.getString("gpsd_db");
+            String gpsd_db = rs.getString("cluster_db");
             user_id = rs.getInt("user_id");
             //Date startDate = rs.getDate("start_date");
             //Date endDate = rs.getDate("end_date");
@@ -73,73 +73,70 @@ public class CatalogService {
             rs.close();
 
             ClusterService clusterService = new ClusterService(this.configProperties);
-            Tables tablelist = clusterService.getTables(gpsd_id);
+            Tables tablelist = clusterService.getTables(cluster_id);
 
-            saveGpsdStats(gpsd_id, tablelist);
+            saveClusterStats(cluster_id, tablelist);
             json = tablelist.getJSON();
 
         } catch (Exception e) {
-            log.error("Error in getting Json (gpsd might not exist) from GPSD:" + gpsd_id + " Exception:" + e.toString());
-            HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
+            log.error("Error in getting Json (cluster might not exist) from CLUSTER:" + cluster_id + " Exception:" + e.toString());
+            HSException hsException = new HSException("CatalogService.getClusterJson()", "Error in getting Json for CLUSTER", e.toString(), "cluster_id=" + cluster_id, user_id);
         }
         return json;
     }
 
-    private void saveGpsdStats(int gpsdId, Tables tables) {
+    private void saveClusterStats(int clusterId, Tables tables) {
         for (Table table : tables.tableHashMap.values()) {
             HashMap<String, Object> mapValues = new HashMap<>();
 
-            mapValues.put("gpsd_id", gpsdId);
+            mapValues.put("cluster_id", clusterId);
             mapValues.put("schema_name", table.schema);
             mapValues.put("table_name", table.tableName);
             mapValues.put("size_in_mb", table.stats.sizeOnDisk * 1024);
             mapValues.put("no_of_rows", table.stats.noOfRows);
 
             try {
-                dbConnect.insert(haystackSchema + ".gpsd_stats", mapValues);
+                dbConnect.insert(haystackSchema + ".cluster_stats", mapValues);
             } catch (Exception ex) {
-                log.error("Error inserting gpsd stats in gpsd_stats table for gpsd_id = " + gpsdId + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
+                log.error("Error inserting cluster stats in cluster_stats table for cluster_id = " + clusterId + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
                 //HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
             }
         }
     }
-    // ProcessWorkload Method, will take 1 GPSD DB and a date range and run Analysis on these queries
+    // ProcessWorkload Method, will take 1 CLUSTER DB and a date range and run Analysis on these queries
     // to generate a JSON model against the workload
 
-    public String processWorkload(Integer workloadId) {
+    public void processWorkload(Integer workloadId) {
         Integer user_id = null;
         try {
 
-            // Fetch Cluster Credentials from GPSD against the WorkloadID
+            // Fetch Cluster Credentials from CLUSTER against the WorkloadID
             // Load this in the TableList
 
 
             // For Queries select the AdminUser and fetch all the queries against the user
             // Based on StartDate and EndDate of the Cluster
 
-            // Fucking process the workload now !!
-
-
-            // Get Database Name against GPSDId,-> DBName
-            String sql = "select A.workload_id, A.gpsd_id, A.start_date, A.end_date, B.gpsd_db, B.dbname, C.user_id, C.user_name\n" +
-                    "from " + haystackSchema + ".workloads A, " + haystackSchema + ".gpsd B , " + haystackSchema + ".users C \n" +
-                    "where A.gpsd_id = B.gpsd_id and C.user_id = A.user_id AND A.workload_id = " + workloadId;
+            // Get Database Name against CLUSTERID,-> DBName
+            String sql = "select A.workload_id, A.cluster_id, A.start_date, A.end_date, B.cluster_db, B.dbname, C.user_id, C.user_name\n" +
+                    "from " + haystackSchema + ".workloads A, " + haystackSchema + ".cluster B , " + haystackSchema + ".users C \n" +
+                    "where A.cluster_id = B.cluster_id and C.user_id = A.user_id AND A.workload_id = " + workloadId;
 
             ResultSet rs = dbConnect.execQuery(sql);
 
             rs.next();
 
-            String gpsd_db = rs.getString("gpsd_db");
+            String cluster_db = rs.getString("cluster_db");
             String dbname = rs.getString("dbname");
 
-            Integer gpsd_id = rs.getInt("gpsd_id");
+            Integer cluster_id = rs.getInt("cluster_id");
             user_id = rs.getInt("user_id");
             Date startDate = rs.getDate("start_date");
             Date endDate = rs.getDate("end_date");
             String schemaName = rs.getString("user_name");
 
             ClusterService clusterService = new ClusterService(this.configProperties);
-            Tables tablelist = clusterService.getTables(gpsd_id);
+            Tables tablelist = clusterService.getTables(cluster_id);
 
             ModelService ms = new ModelService();
 
@@ -156,7 +153,7 @@ public class CatalogService {
 
             // Fetch the queries based on start and end date
             // Update: 11Jan2016= Order by date ASC -- So that we can set search_path while processing queries in the order they were executed
-            // Update: 11Jan2016= Fetch only queries related to the gpsd_db linked to this workload
+            // Update: 11Jan2016= Fetch only queries related to the cluster_db linked to this workload
             Double minDurationSeconds;
             try {
                 // Update: 01Feb2016= Read config.properties query.mindurationseconds and add criteria in fetching queries, this is called pruning
@@ -171,7 +168,7 @@ public class CatalogService {
                     " and  ( EXTRACT(EPOCH FROM logduration) > " + minDurationSeconds + " OR ( EXTRACT(EPOCH FROM logduration) <= " + minDurationSeconds + " AND lower(sql) like '%set%search_path%')) " +  // Commented this for queries which take milliseconds but have significance in parsing i.e. search_path
                     //" and sql like '%catalog_sales%' " + // To Test SQL with where clause
                     " and sql not like '%pg_catalog%'" +
-                    " and logdatabase = '" + dbname + "'";        // Get queries related to the GPSD database to minimze repeat processing of queries
+                    " and logdatabase = '" + dbname + "'";        // Get queries related to the Cluster database to minimze repeat processing of queries
             //" and lower(sql) like 'set%search_path%'" +  // Added this to test search_path functionality
             String orderbySQL = " order by logsessiontime;";
 
@@ -185,7 +182,7 @@ public class CatalogService {
             int percentProcessed = 0;
             int currQryCounter = 0;
 
-            sql = "select id as queryId, sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
+            sql = "select loguser, logdatabase, id as queryId, sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
             ResultSet rsQry = dbConnect.execQuery(sql);
 
             // Create a UserInbox Message for Updated Processing
@@ -203,6 +200,8 @@ public class CatalogService {
                         updatePercentProcessedWorkload(currProcessingPercent, workloadId);
                         percentProcessed = currProcessingPercent;
                     }
+                    String clusterUser = rsQry.getString("loguser");
+                    String clusterDatabaseName = rsQry.getString("logdatabase");
                     String currQry = rsQry.getString("sql");
                     Integer queryId = rsQry.getInt("queryId");
                     currQry = currQry.toLowerCase(); // convert sql to lower case for ease of processing
@@ -235,8 +234,8 @@ public class CatalogService {
                         nQry = removeScatterBy(nQry);
 
                         try {
-                            ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
-
+                            ms.processSQL(queryId, nQry, clusterUser, clusterDatabaseName, null, durationSeconds, user_id, current_search_path);
+//                            ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
                         } catch (Exception e) {
                             log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
                         }
@@ -250,7 +249,7 @@ public class CatalogService {
 
 
             ms.scoreModel();
-            ms.generateRecommendations(gpsd_id);
+            ms.generateRecommendations(cluster_id);
             String model_json = ms.getModelJSON();
 
             // Create a UserInbox Message for Completed Processing
@@ -265,8 +264,6 @@ public class CatalogService {
             sql = "INSERT INTO " +haystackSchema +".workloads_json (workload_id, workload_json) VALUES(" +workloadId +",'" +model_json +"')";
             int r = dbConnect.execNoResultSet(sql);
 
-            return model_json;
-
         } catch (Exception e) {
             // Create a UserInbox Message for Error in Processing
             Date date = new Date();
@@ -275,8 +272,6 @@ public class CatalogService {
             log.error("Error in Processing WorkloadId:" + workloadId + " Exception:" + e.toString());
             HSException hsException = new HSException("CatalogService.processWorkload()", "Error in processing workload", e.toString(), "WorkloadId=" + workloadId, user_id);
         }
-
-        return null;
     }
 
 
@@ -447,7 +442,7 @@ public class CatalogService {
     // Pass the QueryId, against which the QueryLogDates table will be populated
     // Pass the QueryLogDirectory, where the csv log files have been uncompressed
 
-    public boolean processQueryLog(int queryLogId, int gpsd_id, String queryLogDirectory) {
+    public boolean processQueryLog(int queryLogId, int cluster_id, String queryLogDirectory) {
 
         String userName = "";
         Integer userId = null;
@@ -487,7 +482,7 @@ public class CatalogService {
                 Date date = new Date();
                 saveUserInboxMsg(userId, "QUERYLOG_STATUS", "PROCESSING", "Processing started for Query Log File:" + original_file_name + " @DateTime=" + dateFormat.format(date), "JOB PROCESSING", "CatalogService.processQueryLog");
 
-                loadQueries(extTableName, queryLogId, userName, gpsd_id);
+                loadQueries(extTableName, queryLogId, userName, cluster_id);
             } catch (Exception e) {
                 log.error("Unable to populate queries, Exception:" + e.toString());
                 HSException hsException = new HSException("CatalogService.processQueryLog()", "Unable to load queries from external table.", e.toString(),
@@ -516,14 +511,14 @@ public class CatalogService {
         }
     }
 
-    private void loadQueries(String extTableName, Integer QueryId, String userId, Integer gpsd_id) throws SQLException {
+    private void loadQueries(String extTableName, Integer QueryId, String userId, Integer cluster_id) throws SQLException {
 
         String strRunId = String.format("%05d", QueryId);
         String queryLogTableName = userId + ".qry" + strRunId;
         String schemaName = userId;
         ResultSet rs = null;
 
-        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','" + queryTblName + "','" + extTableName + "'," + QueryId + "," + gpsd_id + ");";
+        String sql = "SELECT " + haystackSchema + ".load_querylog('" + haystackSchema + "','" + schemaName + "','" + queryTblName + "','" + extTableName + "'," + QueryId + "," + cluster_id + ");";
         rs = dbConnect.execQuery(sql);
 
 
@@ -622,7 +617,7 @@ public class CatalogService {
     }
 
 
-    public String executeGPSD(int gpsdId, String userName, String fileName) {
+    public String executeGPSD(int clusterId, String userName, String fileName) {
         String searchPath = this.haystackSchema;
         int lineNo = 0;
         boolean hadErrors = false;
@@ -634,7 +629,7 @@ public class CatalogService {
 
             ArrayList<String> fileQueries = new ArrayList<String>();
 
-            String gpsdDBName = userName.toLowerCase() + String.format("%04d", gpsdId);
+            String gpsdDBName = userName.toLowerCase() + String.format("%04d", clusterId);
             DBConnectService dbConnGPSD = new DBConnectService(DBConnectService.DBTYPE.GREENPLUM, this.sqlPath);
 
             // Create a database
@@ -654,7 +649,7 @@ public class CatalogService {
             } catch (Exception e) {
                 log.error("DATABASE:" + gpsdDBName + " already exists!\n");
                 HSException hsException = new HSException("CatalogService.executeGPSD()", "Unable to create database to execute GPSD script.", e.toString(),
-                        "GPSDId=" + gpsdId + ", FileName=" + fileName, userName);
+                        "CLUSTERID=" + clusterId + ", FileName=" + fileName, userName);
 
             }
 
@@ -679,7 +674,7 @@ public class CatalogService {
             Integer currBatchSize = 1;
 
             // Header Variables
-            String gpsd_DB = "", gpsd_date = "", gpsd_params = "", gpsd_version = "";
+            String cluster_DB = "", cluster_date = "", cluster_params = "", cluster_version = "";
 
 
             while ((line = reader.readLine()) != null) {
@@ -690,7 +685,7 @@ public class CatalogService {
                 // If line has comments ignore the comments line, extract any characters before the comments line
                 int x = line.indexOf("--");
                 if (lineNo == 20) {
-                    if (gpsd_date.length() == 0 && gpsd_version.length() == 0) {
+                    if (cluster_date.length() == 0 && cluster_version.length() == 0) {
                         // NOTE: Shouldn't this error propogate up to the UI so that the user knows that the GPSD submitted was in an incorrect format
                         Exception e = new Exception("GPSD File not in proper format");
                         throw e;
@@ -701,24 +696,24 @@ public class CatalogService {
                     if (lineNo < 11) {
                         int i = line.indexOf("-- Database:");
                         if (i >= 0) {
-                            gpsd_DB = line.substring(13);
+                            cluster_DB = line.substring(13);
                         }
                         i = line.indexOf("-- Date:");
                         if (i >= 0) {
-                            gpsd_date = line.substring(8);
+                            cluster_date = line.substring(8);
                         }
                         i = line.indexOf("-- CmdLine:");
                         if (i >= 0) {
-                            gpsd_params = line.substring(11);
+                            cluster_params = line.substring(11);
                         }
                         i = line.indexOf("-- Version:");
                         if (i >= 0) {
-                            gpsd_version = line.substring(11);
+                            cluster_version = line.substring(11);
                             // Update  GPSD  with the Header Information for the new Database
                             /*dbConnect.execNoResultSet(String.format("update haystack.gpsd set gpsd_db = '" + gpsd_DB + "', gpsd_date = '" + gpsd_date + "' , gpsd_params='"
                                     + gpsd_params + "', gpsd_version = '" + gpsd_version + "', filename ='" + fileName + "' where dbname ='" + gpsdDBName + "';");*/
-                            sqlToExec = String.format("UPDATE %s.gpsd SET dbname='%s', gpsd_date='%s', gpsd_params='%s', gpsd_version='%s' WHERE gpsd_id = %d;",
-                                    searchPath, gpsd_DB, gpsd_date, gpsd_params, gpsd_version, gpsdId);
+                            sqlToExec = String.format("UPDATE %s.cluster SET dbname='%s', cluster_date='%s', cluster_params='%s', cluster_version='%s' WHERE cluster_id = %d;",
+                                    searchPath, cluster_DB, cluster_date, cluster_params, cluster_version, clusterId);
                             dbConnect.execNoResultSet(sqlToExec);
                         }
                     }
@@ -810,7 +805,7 @@ public class CatalogService {
                                         hadErrors = true;
                                         log.debug(e.getMessage());
                                         HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in executing GPSD Query Batch", e.toString(),
-                                                "GPSDId=" + gpsdId + ", FileName=" + fileName + " ,SQL=" + sbBatchQueries.toString(), userName);
+                                                "GPSDId=" + clusterId + ", FileName=" + fileName + " ,SQL=" + sbBatchQueries.toString(), userName);
                                         // do nothing
                                     }
                                     currBatchSize = 0;
@@ -824,8 +819,8 @@ public class CatalogService {
                                 } catch (Exception e) {
                                     hadErrors = true;
                                     log.debug(e.getMessage());
-                                    HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in executing GPSD Query", e.toString(),
-                                            "GPSDId=" + gpsdId + ", FileName=" + fileName + " ,SQL=" + currQuery, userName);
+                                    HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in executing Cluster Query", e.toString(),
+                                            "ClusterId=" + clusterId + ", FileName=" + fileName + " ,SQL=" + currQuery, userName);
                                     // do nothing
                                 }
                             }
@@ -842,13 +837,13 @@ public class CatalogService {
                 }
             }
             ClusterService clusterService = new ClusterService(this.configProperties);
-            Tables tablelist = clusterService.getTables(gpsdId);
+            Tables tablelist = clusterService.getTables(clusterId);
             String json_res = tablelist.getJSON();
             dbConnGPSD.close();
             //======================================================
-            // Update  GPSD  with the Header Information for the new Database
-            //dbConnect.execNoResultSet("update  haystack.gpsd set noOflines = " + lineNo + " where dbname ='" + gpsdDBName + "';");
-            sqlToExec = String.format("UPDATE %s.gpsd SET nooflines=%d, gpsd_db='%s' WHERE gpsd_id=%d;", haystackSchema, lineNo, gpsdDBName, gpsdId);
+            // Update  CLUSTER  with the Header Information for the new Database
+            //dbConnect.execNoResultSet("update  haystack.cluster set noOflines = " + lineNo + " where dbname ='" + gpsdDBName + "';");
+            sqlToExec = String.format("UPDATE %s.cluster SET nooflines=%d, cluster_db='%s' WHERE cluster_id=%d;", haystackSchema, lineNo, gpsdDBName, clusterId);
             dbConnect.execNoResultSet(sqlToExec);
 
             sqlToExec = "select user_id from " + haystackSchema + ".users where user_name = '" + userName + "';";
@@ -857,7 +852,7 @@ public class CatalogService {
 
             //TODO  Check if cluster entry exists for the same dbname,
             sqlToExec = "INSERT INTO " + haystackSchema + ".cluster(  cluster_id ,cluster_name ,host ,dbname ,port ,password ,username ,\n" +
-                    "  query_refresh_schedule ,created_on ,cluster_type ,user_id ) VALUES (999" + gpsdId + ",'GPSD-" + gpsdId + "-" + gpsdDBName +
+                    "  query_refresh_schedule ,created_on ,cluster_type ,user_id ) VALUES (999" + clusterId + ",'GPSD-" + clusterId + "-" + gpsdDBName +
                     "','" + gpsdCred.getHostName() + "','" + gpsdDBName + "'," + gpsdCred.getPort() + ",'" + gpsdCred.getPassword() +
                     "','" + gpsdCred.getUserName() + "','24hour',now(),'GREENPLUM'," + rsUser.getInt("user_id");
 
@@ -869,7 +864,7 @@ public class CatalogService {
             hadErrors = true;
             log.error(e.toString());
             HSException hsException = new HSException("CatalogService.executeGPSD()", "Error in parsing GPSD File or updating GPSD table", e.toString(),
-                    "GPSDId=" + gpsdId + ", FileName=" + fileName, userName);
+                    "CLUSTERId=" + clusterId + ", FileName=" + fileName, userName);
         }
 
         return "None";

@@ -120,7 +120,7 @@ import java.util.Properties;
         try {
 
             //Get current refresh status of this cluster
-            String sql = "SELECT is_refreshing FROM " +haystackSchema +".gpsd WHERE gpsd_id = " +clusterId;
+            String sql = "SELECT is_refreshing FROM " +haystackSchema +".cluster WHERE cluster_id = " +clusterId;
             ResultSet resultSet = dbConnect.execQuery(sql);
 
             resultSet.next();
@@ -132,13 +132,13 @@ import java.util.Properties;
             }
 
             // Fetch cluster details from HayStack Schema
-            sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+            sql = "select cluster_id, cluster_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
                     " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
-                    ".gpsd where host is not null and is_active = true and gpsd_id = " + clusterId + ";";
+                    ".cluster where host is not null and is_active = true and cluster_id = " + clusterId + ";";
             ResultSet rs = dbConnect.execQuery(sql);
             while (rs.next()) {
 
-                //Integer clusterId = rs.getInt("gpsd_id");
+                //Integer clusterId = rs.getInt("cluster_id");
                 Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
                 Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
                 Timestamp currentTime = rs.getTimestamp("current_time");
@@ -152,7 +152,7 @@ import java.util.Properties;
 
                 if (isGPSD) { // load from stats
                     clusterCred = this.gpsd_credentials;
-                    clusterCred.setDatabase(rs.getString("gpsd_db"));
+                    clusterCred.setDatabase(rs.getString("cluster_db"));
                 } else {
                     clusterCred = getCredentials(rs);
                 }
@@ -175,7 +175,7 @@ import java.util.Properties;
                 try {
                     Boolean connectSuccess = cluster.connect(clusterCred);
                     if (!connectSuccess) { // Set IsActive = false for this gpsd_id, so that we donot try to connect it each time
-                        sql = "UPDATE " + haystackSchema + ".gpsd set is_active = false where gpsd_id = " + clusterId + ";";
+                        sql = "UPDATE " + haystackSchema + ".cluster set is_active = false where cluster_id = " + clusterId + ";";
                         //TODO Add Notification for User - UserInbox
                         //TODO  Comment out for now, enable when scheduled refresh it done
                         //dbConnect.execNoResultSet(sql);
@@ -183,7 +183,7 @@ import java.util.Properties;
                     }
 
                     //Set is_refreshing to TRUE for this cluster so that 2nd refresh do not start until current refresh finishes.
-                    sql = "UPDATE " +haystackSchema +".gpsd SET is_refreshing = true WHERE gpsd_id = " + clusterId;
+                    sql = "UPDATE " +haystackSchema +".cluster SET is_refreshing = true WHERE cluster_id = " + clusterId;
                     dbConnect.execNoResultSet(sql);
 
                     Integer queryRefreshIntervalHours = Integer.parseInt(this.properties.getProperty("query.refresh.interval.hours"));
@@ -200,11 +200,11 @@ import java.util.Properties;
                     }
 
                     //Set is_refreshing to FALSE for this cluster so that user can perform refresh again.
-                    sql = "UPDATE " + haystackSchema +".gpsd SET is_refreshing = false WHERE gpsd_id = " + clusterId;
+                    sql = "UPDATE " + haystackSchema +".cluster SET is_refreshing = false WHERE cluster_id = " + clusterId;
                     dbConnect.execNoResultSet(sql);
 
                 } catch (Exception e) {
-                    log.error("Error in refreshing cluster gpsd_id= " + clusterId + " Exception=" + e.toString());
+                    log.error("Error in refreshing cluster cluster_id= " + clusterId + " Exception=" + e.toString());
                 }
             }
             rs.close();
@@ -291,21 +291,21 @@ import java.util.Properties;
     }
 
     // This method gets the table details from statistics loaded from GPSD file
-    public Tables getTables(Integer gpsd_id) {
+    public Tables getTables(Integer cluster_id) {
         Tables tablelist = new Tables();
         String clusterType = "";
         Cluster cluster;
         Credentials clusterCred = new Credentials();
         try {
 
-            String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+            String sql = "select cluster_id, cluster_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
                     " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
-                    ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id;
+                    ".cluster where host is not null and is_active = true and cluster_id = " + cluster_id;
             ResultSet rs = dbConnect.execQuery(sql);
 
             while (rs.next()) {
 
-                Integer clusterId = rs.getInt("gpsd_id");
+                Integer clusterId = rs.getInt("cluster_id");
                 Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
                 Timestamp lastSchemaRefreshTime = rs.getTimestamp("last_schema_refreshed_on");
                 Timestamp currentTime = rs.getTimestamp("current_time");
@@ -319,7 +319,7 @@ import java.util.Properties;
 
                 if (isGPSD) { // load from stats
                     clusterCred = this.gpsd_credentials;
-                    clusterCred.setDatabase(rs.getString("gpsd_db"));
+                    clusterCred.setDatabase(rs.getString("cluster_db"));
                 } else {
                     clusterCred = getCredentials(rs);
                 }
@@ -343,7 +343,7 @@ import java.util.Properties;
             }
 
         } catch (Exception e) {
-            log.error("Error while fetching table details from GPSD:" + e.toString());
+            log.error("Error while fetching table details from CLUSTER:" + e.toString());
         }
         return tablelist;
     }

@@ -21,19 +21,6 @@
  */
 package com.haystack.parser.util;
 
-//import com.haystack.parser.expression.*;
-//import com.haystack.parser.expression.arithmetic.*;
-//import com.haystack.parser.expression.conditional.AndExpression;
-//import com.haystack.parser.expression.conditional.OrExpression;
-//import com.haystack.parser.expression.relational.*;
-//import com.haystack.parser.schema.Column;
-//import com.haystack.parser.schema.Table;
-//import com.haystack.parser.statement.delete.Delete;
-//import com.haystack.parser.statement.insert.Insert;
-//import com.haystack.parser.statement.replace.Replace;
-//import com.haystack.parser.statement.select.*;
-//import com.haystack.parser.statement.update.Update;
-
 import net.sf.jsqlparser.expression.*;
 import net.sf.jsqlparser.expression.operators.arithmetic.*;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
@@ -51,6 +38,7 @@ import java.net.Inet4Address;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Stack;
 
 import com.haystack.domain.Attribute;
 import com.haystack.visitor.Query;
@@ -62,7 +50,7 @@ import com.haystack.domain.Condition;
 /**
  * Find all used tables within an select statement.
  */
-public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor {
+public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor, OrderByVisitor {
     static Logger log = LoggerFactory.getLogger(parserDOM.class.getName());
 //    public ArrayList<QryTable> tables;
 //    public ArrayList<Attribute> columns;
@@ -72,23 +60,14 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     private List<String> otherItemNames;
 
     public Query queryLevelObj;
+    private String currLevel;
 
     public String getCurrLevel() {
         return currLevel;
     }
-
     public void setCurrLevel(String currLevel) {
         this.currLevel = currLevel;
     }
-
-    private String currLevel;
-
-    /**
-     * There are special names, that are not table names but are parsed as
-     * tables. These names are collected here and are not included in the tables
-     * - names anymore.
-     */
-
 
     private void init() {
         otherItemNames = new ArrayList<String>();
@@ -97,7 +76,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 //        conditions = new ArrayList<Condition>();
         levelsHashMap = new HashMap<String, Integer>();
         queryHashLevels = new HashMap<Integer, String>();
-
         queryLevelObj = new Query(null);
         setCurrLevel("1");
     }
@@ -277,7 +255,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         //TODO: Populate structure in this method
         queryHashLevels.put(plainSelect.toString().hashCode(), currLevel);
 
-
         if (plainSelect.getSelectItems() != null) {
             for (SelectItem item : plainSelect.getSelectItems()) {
                 item.accept(this);
@@ -287,7 +264,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         if (plainSelect.getGroupByColumnReferences() != null) {
             List<Expression> groupByCols = plainSelect.getGroupByColumnReferences();
             for (int i = 0; i < groupByCols.size(); i++) {
-
                 groupByCols.get(i).accept(this);
 
                 //by: muji
@@ -315,11 +291,14 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             plainSelect.getHaving().accept(this);
         }
 
-        plainSelect.getFromItem().accept(this);
+        if(plainSelect.getFromItem() != null) {
+            plainSelect.getFromItem().accept(this);
+        }
 
         if (plainSelect.getJoins() != null) {
             for (Join join : plainSelect.getJoins()) {
                 join.getRightItem().accept(this);
+
                 if (join.getOnExpression() != null) {
                     join.getOnExpression().accept(this);
                 }
@@ -330,6 +309,12 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 
         if (plainSelect.getWhere() != null) {
             plainSelect.getWhere().accept(this);
+        }
+
+        if(plainSelect.getOrderByElements() != null){
+            for(OrderByElement orderByElement : plainSelect.getOrderByElements()){
+                orderByElement.accept(this);
+            }
         }
 
 
@@ -353,6 +338,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 //            table.level = level;
 //            tables.add(table);
             queryLevelObj.addTable(queryLevelObj, table, currLevel);
+
         } catch (Exception e) {
             log.error("Error in adding Table in NF:" + tableName.toString() + ": Error Msg:" + e.toString());
         }
@@ -374,6 +360,7 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             column.nameFQN = tableColumn.getFullyQualifiedName();
 
             queryLevelObj.addColumn(queryLevelObj, column, currLevel);
+
         } catch (Exception e) {
             log.error("Error in extracting alias for Column:" + tableColumn.getFullyQualifiedName());
         }
@@ -402,7 +389,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     public void visit(Function function) {
         // 17-June-2015 Muji - Extract columns from the function
         try {
-
             ExpressionList parameters = function.getParameters();
             if (parameters != null) {
                 for (int i = 0; i < parameters.getExpressions().size(); i++) {
@@ -887,5 +873,10 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     @Override
     public void visit(RowConstructor rowConstructor) {
 
+    }
+
+    @Override
+    public void visit(OrderByElement orderByElement) {
+        orderByElement.getExpression().accept(this);
     }
 }

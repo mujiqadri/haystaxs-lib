@@ -112,7 +112,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
         ms.setTableList(tablelist);
         //ms.annotateModel(qry,clusterService.tablelist);
 
-        ms.processSQL(1, qry, 400.5, 3, "tpcds");
+        ms.processSQL(1, qry, null, null, null, 400.5, 3, "tpcds");
         ms.scoreModel();
         String str = ms.getModelJSON();
 
@@ -178,6 +178,9 @@ public class ModelServiceTestSingleQuery extends TestCase {
                         "          cd_dep_employed_count,\n" +
                         "          cd_dep_college_count\n" +
                         "limit 100;";
+
+//        String myQuery = "SELECT c1, c2 FROM t1, t2 WHERE c1 = c2 ORDER BY c1";
+
         //myQuery = " select a as b from T;";
         Query qry = new Query();
         qry.setQueryText(myQuery);
@@ -199,7 +202,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
         ms.setTableList(tablelist);
         //ms.annotateModel(qry,clusterService.tablelist);
 
-        ms.processSQL(1, qry, 400.5, 3, "tpcds");
+        ms.processSQL(1, qry, null, null, null, 400.5, 3, "tpcds");
         ms.scoreModel();
         String str = ms.getModelJSON();
 
@@ -236,7 +239,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
 
     public void testWorkload() throws Exception {
-        Integer workloadId = 30;   // 35 for tpc-ds, 20 for citi queries
+        Integer workloadId = 54;   // 35 for tpc-ds, 20 for citi queries
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -244,15 +247,16 @@ public class ModelServiceTestSingleQuery extends TestCase {
 
         CatalogService catalogService = new CatalogService(configProperties);
 
-        String result = catalogService.processWorkload(workloadId);
-        System.out.println("JSON: " +result);
+        catalogService.processWorkload(workloadId);
+        String result = catalogService.getWorkloadJSON(workloadId);
 
+        System.out.println("JSON: " +result);
         System.out.print("test finished");
     }
 
     public void testGetWorkloadJsonMethod() throws  Exception{
 
-        Integer workloadId = 32;   // 35 for tpc-ds, 20 for citi queries
+        Integer workloadId = 53;   // 35 for tpc-ds, 20 for citi queries
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -262,7 +266,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
 
         catalogService.processWorkload(workloadId);
 
-        String result = catalogService.getWorkloadJSON(32);
+        String result = catalogService.getWorkloadJSON(workloadId);
 
         System.out.println("JSON: " +result);
 

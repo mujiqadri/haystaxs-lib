@@ -502,7 +502,7 @@ public abstract class Cluster {
         return json;
     }
 
-    public void saveGpsdStats(int gpsd_Log_Id, Tables tables) {
+    public void saveClusterStats(int cluster_Log_Id, Tables tables) {
         try {
             // TODO: This should be kept so that the Schema size can be compared later on..
 
@@ -510,7 +510,7 @@ public abstract class Cluster {
             for (Table table : tables.tableHashMap.values()) {
                 HashMap<String, Object> mapValues = new HashMap<>();
 
-                mapValues.put("gpsd_log_id", gpsd_Log_Id);
+                mapValues.put("cluster_log_id", cluster_Log_Id);
                 mapValues.put("schema_name", table.schema);
                 mapValues.put("table_name", table.tableName);
                 mapValues.put("size_in_mb", table.stats.sizeOnDisk * 1024);
@@ -518,15 +518,15 @@ public abstract class Cluster {
                 mapValues.put("created_on", "now()");
 
                 try {
-                    haystackDBConn.insert(haystackSchema + ".gpsd_stats", mapValues);
+                    haystackDBConn.insert(haystackSchema + ".cluster_stats", mapValues);
                 } catch (Exception ex) {
-                    log.error("Error inserting gpsd stats in gpsd_stats table for gpsd_log_id = " + gpsd_Log_Id + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
+                    log.error("Error inserting cluster stats in cluster_stats table for cluster_log_id = " + cluster_Log_Id + " and for table = " + table.tableName + " ;Exception:" + ex.toString());
                     //HSException hsException = new HSException("CatalogService.getGPSDJson()", "Error in getting Json for GPSD", e.toString(), "gpsd_id=" + gpsd_id, user_id);
                 }
             }
 
         } catch (Exception e) {
-            log.error("Error saving gpsd_stats rows from " + haystackSchema + ".gpsd_stats for gpsd_log_id = " + gpsd_Log_Id + " ;Exception:" + e.toString());
+            log.error("Error saving cluster_stats rows from " + haystackSchema + ".cluster_stats for cluster_log_id = " + cluster_Log_Id + " ;Exception:" + e.toString());
         }
     }
 

@@ -71,9 +71,8 @@ public class ModelService {
         }
     }
 
-    public static void main(String args[]) {
+    public static void main(String args[]) {}
 
-    }
     public void setTableList(Tables tbllist){
         this.tablelist = tbllist;
     }
@@ -96,7 +95,7 @@ public class ModelService {
         return totalNoDistinctValues;
     }
 
-    private Credentials getCredentials(int gpsd_id) throws IOException, SQLException, ClassNotFoundException {
+    private Credentials getCredentials(int cluster_id) throws IOException, SQLException, ClassNotFoundException {
         ConfigProperties configProperties = new ConfigProperties();
         configProperties.loadProperties();
 
@@ -104,9 +103,9 @@ public class ModelService {
 
         Credentials gpsd_credentials  = configProperties.getGPSDCredentials();
 
-        String sql = "select gpsd_id, gpsd_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+        String sql = "select cluster_id, cluster_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
                 " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
-                ".gpsd where host is not null and is_active = true and gpsd_id = " + gpsd_id;
+                ".cluster where host is not null and is_active = true and cluster_id = " + cluster_id;
 
         Credentials clusterCred = new Credentials();
 
@@ -115,7 +114,7 @@ public class ModelService {
 
         while (rs.next()) {
 
-            Integer clusterId = rs.getInt("gpsd_id");
+            Integer clusterId = rs.getInt("cluster_id");
 
             String hostName = rs.getString("host");
             Boolean isGPSD = false;
@@ -125,7 +124,7 @@ public class ModelService {
 
             if (isGPSD) { // load from stats
                 clusterCred = gpsd_credentials;
-                clusterCred.setDatabase(rs.getString("gpsd_db"));
+                clusterCred.setDatabase(rs.getString("cluster_db"));
             } else {
 
                 String sHost = rs.getString("host");
@@ -149,11 +148,11 @@ public class ModelService {
         recommendation.type = type;
         return recommendation;
     }
-    public void generateRecommendations(int gpsd_id){
+    public void generateRecommendations(int cluster_id){
 
         try {
 
-            Credentials credentials = getCredentials(gpsd_id);
+            Credentials credentials = getCredentials(cluster_id);
 
             // Fetch Recommendation Engine settings from config.properties file
             Double columnarThresholdPercent = Double.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
@@ -222,30 +221,6 @@ public class ModelService {
                         }
                     }
                     // A.1) Get Distribution Key, if it matches the candidateDK then ignore else add Recommendation with the CandidateDK
-
-                    //By Ghaffar: 21/6/2016
-                    //I have commented-out the old code because it have some bugs.
-                    //TODO: remove after conformation from mujtaba
-
-                    /*String recKey = "";
-                    for (String currCol : maxConfidenceCandidateDK) {
-                        if (recKey.length() == 0) {
-                            recKey = currCol;
-                        } else {
-                            recKey += "," + currCol;
-                        }
-                    }*/
-
-                    /*for (String candidateColumn : maxConfidenceCandidateDK) {
-                        if (currTable.dk.containsKey(candidateColumn) == false) {
-                            // DK and Candidate Key Mismatch, add recommendation for Candidate Key
-                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
-                            recommendation.description = "Distribution key should be set to " + recKey;
-                            recommendation.anamoly = "Confidence for new key:" + maxConfidence;
-                            tablelist.recommendations.put(recId.toString(), recommendation);
-                            recId++;
-                        }
-                    }*/
 
                     Iterator<Map.Entry<Float, String>> maxConfidenceCandidateDKIterator = maxConfidenceCandidateDK.entrySet().iterator();
 
@@ -423,7 +398,6 @@ public class ModelService {
         }
     }
 
-
     public void scoreModel(){
         try {
             float totalWorkloadScore = 0;
@@ -460,7 +434,7 @@ public class ModelService {
                 try {
                     // Calculate confidence for all joins, using Confidence = Support x (LeftTableWeight + RightTableWeight)
                     Double totalColumnUsage = 0.0;
-                    Integer columnCount = currTable.columns.size();
+                    Integer columnCount = currTable.columns.size(); //Here is the problem i think, confirm with mujtaba
                     Double avgColUsage = 0.0;
                     for (Map.Entry<String, Column> entryColumn : currTable.columns.entrySet()) {
                         Column currColumn = entryColumn.getValue();
@@ -534,11 +508,11 @@ public class ModelService {
         return tablelist.getJSON();
     }
 
-    public void processSQL(Integer queryId, Query query, double executionTime, Integer userId, String current_search_path) throws Exception {
-        processSQL(queryId, query.getQueryText(), executionTime, userId, current_search_path);
+    public void processSQL(Integer queryId, Query query, String clusterUser, String clusterDatabase, String schema, double executionTime, Integer userId, String current_search_path) throws Exception {
+        processSQL(queryId, query.getQueryText(), clusterUser, clusterDatabase, schema, executionTime, userId, current_search_path);
     }
 
-    public void processSQL(Integer queryId, String query, double executionTime, Integer userId, String current_search_path) throws Exception {
+    public void processSQL(Integer queryId, String query, String clusterUser, String clusterDatabase, String schema, double executionTime, Integer userId, String current_search_path) throws Exception {
         parserDOM currtablesNF = new parserDOM();
 
         String jsonAST = "";
@@ -664,11 +638,10 @@ public class ModelService {
             }
         }
 
+
         //Resolving Conditions
         processConditions(queryLevelObj, current_search_path);
 
-        //TODO: Ek weekend tayl karna hay
-        //Date: 18/6/2016
         divideTimeAmongstTables(queryLevelObj, executionTime);
 
         Iterator<com.haystack.visitor.Query> subQueriesIterator = queryLevelObj.subQueries.iterator();
