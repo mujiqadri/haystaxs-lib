@@ -1,8 +1,7 @@
 package com.haystack.service;
 
-import com.haystack.domain.Query;
-import com.haystack.domain.Tables;
-import com.haystack.domain.Table;
+import com.haystack.domain.*;
+import com.haystack.parser.expression.StringValue;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
@@ -13,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -247,10 +247,12 @@ public class CatalogService {
 
             rsQry.close();
 
-
             ms.scoreModel();
             ms.generateRecommendations(cluster_id);
             String model_json = ms.getModelJSON();
+
+            //ToDO:persist tables data
+            persistInDatabase(workloadId, ms.getTableList());
 
             // Create a UserInbox Message for Completed Processing
             Date date3 = new Date();
@@ -274,6 +276,253 @@ public class CatalogService {
         }
     }
 
+
+    public void persistInDatabase(int workloadId, Tables tablesList) {
+        String tableInsertSQL = "INSERT INTO " +haystackSchema +".wl_table(wl_table_id, workload_id, oid, table_name, database, schema, dkarray, skew, iscolumnar, iscompressed, storage_mode, compress_level, noofrows, size_on_disk, size_uncompressed, compression_ratio, no_of_columns, ispartitioned, relpage, size_for_display_compressed, size_for_display_uncompressed, model_score, usage_frequency, execution_time, workload_score)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        String columnInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_column(wl_table_id, wl_table_column_id, column_name, ordinal_position, data_type, isdk, character_max_length, numeric_precision, numeric_precision_radix, numeric_scale, usage_frequency, where_usage, ispartitioned, partition_level, position_in_partition_key)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        String tableDKInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_dk(wl_table_id, wl_table_column_id)VALUES (?, ?);";
+        String tablePartitionColumnInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_partitioncolumn(wl_table_id, wl_table_column_id)VALUES (?, ?);";
+        String tableJoinInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_join(wl_table_id, wl_join_id, left_schema, left_table, right_schema, right_table, level, support_count, confidence)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        String tableJoinTupleInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_join_jointuple(wl_join_id, left_column, right_column) VALUES (?, ?, ?);\n";
+        String tablePartitionInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_partition(wl_table_id, wl_table_partition_id, table_name, partition_name, level, type, rank, \"position\", list_values, range_start, range_start_inclusive, range_end, range_end_inclusive, every_clause, isdefault, boundary, reltuples, relpages)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        String childPartitionInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_child_partition(wl_table_id, wl_table_partition_id, table_name, partition_name, level, type, rank, \"position\", list_values, range_start, range_start_inclusive, range_end, range_end_inclusive, every_clause, isdefault, boundary, reltuples, relpages)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";;
+        String tableRecommandationInsertSQL = "INSERT INTO " +haystackSchema +".wl_table_recommendation(wl_table_id, oid, schema, table_name, type, description, anamoly) VALUES (?, ?, ?, ?, ?, ?, ?);";
+
+        try {
+            PreparedStatement tableInsertStatement = dbConnect.prepareStatement(tableInsertSQL);
+            PreparedStatement columnInsertStatement = dbConnect.prepareStatement(columnInsertSQL);
+            PreparedStatement tableDKInsertStatement = dbConnect.prepareStatement(tableDKInsertSQL);
+            PreparedStatement tablePartitionColumnInsertStatement = dbConnect.prepareStatement(tablePartitionColumnInsertSQL);
+            PreparedStatement tableJoinInsertStatement = dbConnect.prepareStatement(tableJoinInsertSQL);
+            PreparedStatement tableJoinTupleInsertStatement = dbConnect.prepareStatement(tableJoinTupleInsertSQL);
+            PreparedStatement tablePartitionInsertStatement = dbConnect.prepareStatement(tablePartitionInsertSQL);
+            PreparedStatement childPartitionInsertStatement = dbConnect.prepareStatement(childPartitionInsertSQL);
+            PreparedStatement tableRecommandationInsertStatement = dbConnect.prepareStatement(tableRecommandationInsertSQL);
+
+            Iterator<Map.Entry<String, Table>> tablesIterator = tablesList.tableHashMap.entrySet().iterator();
+
+            while (tablesIterator.hasNext()) {
+                Table currTable = tablesIterator.next().getValue();
+
+                log.debug("Persisting Table: " +currTable.schema+"." +currTable.tableName);
+
+                //1. Get new table id from sequence
+                ResultSet resultSet = dbConnect.execQuery("SELECT nextval('" + haystackSchema + ".seq_wl_table') as new_table_id");
+                resultSet.next();
+                int tableId = resultSet.getInt("new_table_id");
+                resultSet.close();
+
+                //2. Persist table info in database
+                //wl_table_id, workload_id, oid, table_name, database, schema, dkarray, skew, iscolumnar, iscompressed, storage_mode,
+                // compress_level, noofrows, size_on_disk, size_uncompressed, compression_ratio, no_of_columns, ispartitioned,
+                // relpage, size_for_display_compressed, size_for_display_uncompressed, model_score, usage_frequency, execution_time, workload_score
+                tableInsertStatement.setInt(1, tableId);
+                tableInsertStatement.setInt(2, workloadId);
+                tableInsertStatement.setString(3, currTable.oid);
+                tableInsertStatement.setString(4, currTable.tableName);
+                tableInsertStatement.setString(5, currTable.database);
+                tableInsertStatement.setString(6, currTable.schema);
+                tableInsertStatement.setString(7, currTable.dkArray);
+                tableInsertStatement.setFloat(8, currTable.stats.skew);
+                tableInsertStatement.setBoolean(9, currTable.stats.isColumnar);
+                tableInsertStatement.setBoolean(10, currTable.stats.isCompressed);
+                tableInsertStatement.setString(11, currTable.stats.storageMode);
+                tableInsertStatement.setInt(12, currTable.stats.compressLevel);
+                tableInsertStatement.setDouble(13, currTable.stats.noOfRows);
+                tableInsertStatement.setFloat(14, currTable.stats.sizeOnDisk);
+                tableInsertStatement.setFloat(15, currTable.stats.sizeUnCompressed);
+                tableInsertStatement.setFloat(16, currTable.stats.compressionRatio);
+                tableInsertStatement.setInt(17, currTable.stats.noOfColumns);
+                tableInsertStatement.setBoolean(18, currTable.stats.isPartitioned);
+                tableInsertStatement.setInt(19, currTable.stats.relPages);
+                tableInsertStatement.setString(20, currTable.stats.sizeForDisplayCompressed);
+                tableInsertStatement.setString(21, currTable.stats.sizeForDisplayUnCompressed);
+                tableInsertStatement.setFloat(22, currTable.stats.getModelScore());
+                tableInsertStatement.setInt(23, currTable.stats.getTableUsageFrequency());
+                tableInsertStatement.setDouble(24, currTable.stats.getExecutionTime());
+                tableInsertStatement.setFloat(25, currTable.stats.getWorkloadScore());
+
+                Iterator<Map.Entry<String, Column>> columnsIterator = currTable.columns.entrySet().iterator();
+                while (columnsIterator.hasNext()) {
+                    Column currTableColumn = columnsIterator.next().getValue();
+
+                    //3.Get new column id from sequence
+                    resultSet = dbConnect.execQuery("SELECT nextval('" + haystackSchema + ".seq_wl_table_column') as new_column_id");
+                    resultSet.next();
+                    int columnId = resultSet.getInt("new_column_id");
+                    resultSet.close();
+
+                    //4. Persist table column info in database
+                    //wl_table_id, wl_table_column_id, column_name, ordinal_position, data_type, isdk, character_max_length,
+                    // numeric_precision, numeric_precision_radix, numeric_scale, usage_frequency, where_usage, ispartitioned,
+                    // partition_level, position_in_partition_key
+                    columnInsertStatement.setInt(1, tableId);
+                    columnInsertStatement.setInt(2, columnId);
+                    columnInsertStatement.setString(3, currTableColumn.column_name);
+                    columnInsertStatement.setInt(4, currTableColumn.ordinal_position);
+                    columnInsertStatement.setString(5, currTableColumn.data_type);
+                    columnInsertStatement.setBoolean(6, currTableColumn.isDK);
+                    columnInsertStatement.setInt(7, currTableColumn.character_maximum_length);
+                    columnInsertStatement.setInt(8, currTableColumn.numeric_precision);
+                    columnInsertStatement.setInt(9, currTableColumn.numeric_precision_radix);
+                    columnInsertStatement.setInt(10, currTableColumn.numeric_scale);
+                    columnInsertStatement.setInt(11, currTableColumn.getUsageScore());
+                    columnInsertStatement.setInt(12, currTableColumn.getWhereUsage());
+                    columnInsertStatement.setBoolean(13, currTableColumn.isPartitioned);
+                    columnInsertStatement.setInt(14, currTableColumn.partitionLevel);
+                    columnInsertStatement.setInt(15, currTableColumn.positionInPartitionKey);
+
+                    //5. if Current Column is a distribution key of current table then persist it in database
+                    if (currTable.dk.containsKey(currTableColumn.column_name)) {
+                        tableDKInsertStatement.setInt(1, tableId);
+                        tableDKInsertStatement.setInt(2, columnId);
+                        tableDKInsertStatement.addBatch();
+                    }
+
+                    //5. if Current Column is a partition column of current table then persist it in database
+                    if (currTable.partitionColumn.containsKey(currTableColumn.column_name)) {
+                        tablePartitionColumnInsertStatement.setInt(1, tableId);
+                        tablePartitionColumnInsertStatement.setInt(2, columnId);
+                        tablePartitionColumnInsertStatement.addBatch();
+                    }
+
+                    columnInsertStatement.addBatch();
+                }
+
+                Iterator<Map.Entry<String, Join>> joinsIterator = currTable.joins.entrySet().iterator();
+                while (joinsIterator.hasNext()) {
+                    Join join = joinsIterator.next().getValue();
+
+                    // Get new join id from sequence
+                    resultSet = dbConnect.execQuery("SELECT nextval('" + haystackSchema + ".seq_wl_table_join') as new_join_id ");
+                    resultSet.next();
+                    int joinId = resultSet.getInt("new_join_id");
+
+                    //Persist Join in database
+                    //wl_table_id, wl_join_id, left_schema, left_table, right_schema, right_table, level, support_count, confidence
+                    tableJoinInsertStatement.setInt(1, tableId);
+                    tableJoinInsertStatement.setInt(2, joinId);
+                    tableJoinInsertStatement.setString(3, join.leftSchema);
+                    tableJoinInsertStatement.setString(4, join.leftTable);
+                    tableJoinInsertStatement.setString(5, join.rightSchema);
+                    tableJoinInsertStatement.setString(6, join.rightTable);
+//                    tableJoinInsertStatement.setInt(7, Integer.parseInt(join.level));
+                    tableJoinInsertStatement.setInt(7, 0);
+                    tableJoinInsertStatement.setInt(8, join.getSupportCount());
+                    tableJoinInsertStatement.setFloat(9, join.getConfidence());
+
+                    tableJoinInsertStatement.addBatch();
+
+                    Iterator<Map.Entry<String, JoinTuple>> joinTupleIterator = join.joinTuples.entrySet().iterator();
+                    while (joinTupleIterator.hasNext()) {
+                        JoinTuple joinTuple = joinTupleIterator.next().getValue();
+
+                        //Persist JionTuple Information in database
+                        //wl_join_id, left_column, right_column
+                        tableJoinTupleInsertStatement.setInt(1, joinId);
+                        tableJoinTupleInsertStatement.setString(2, joinTuple.leftcolumn);
+                        tableJoinTupleInsertStatement.setString(3, joinTuple.rightcolumn);
+
+                        tableJoinTupleInsertStatement.addBatch();
+                    }
+                }
+
+                Iterator<Map.Entry<String, Partition>> partitionIterator = currTable.partitions.entrySet().iterator();
+                while (partitionIterator.hasNext()) {
+                    Partition partition = partitionIterator.next().getValue();
+
+                    // Get new partition id from sequence
+                    resultSet = dbConnect.execQuery("SELECT nextval('" + haystackSchema + ".seq_wl_table_partition') as new_partition_id ");
+                    resultSet.next();
+                    int partitionId = resultSet.getInt("new_partition_id");
+
+                    //persist partition information in database
+                    //wl_table_id, wl_table_partition_id, table_name, partition_name, level, type, rank, "position", list_values,
+                    // range_start, range_start_inclusive, range_end, range_end_inclusive, every_clause, isdefault, boundary, reltuples, relpages
+                    tablePartitionInsertStatement.setInt(1, tableId);
+                    tablePartitionInsertStatement.setInt(2, partitionId);
+                    tablePartitionInsertStatement.setString(3, partition.tableName);
+                    tablePartitionInsertStatement.setString(4, partition.partitionName);
+                    tablePartitionInsertStatement.setInt(5, partition.level);
+                    tablePartitionInsertStatement.setString(6, partition.type);
+                    tablePartitionInsertStatement.setInt(7, partition.rank);
+                    tablePartitionInsertStatement.setInt(8, partition.position);
+                    tablePartitionInsertStatement.setString(9, partition.listValues);
+                    tablePartitionInsertStatement.setString(10, partition.rangeStart);
+                    tablePartitionInsertStatement.setBoolean(11, partition.rangeStartInclusive);
+                    tablePartitionInsertStatement.setString(12, partition.rangeEnd);
+                    tablePartitionInsertStatement.setBoolean(13, partition.rangeEndInclusive);
+                    tablePartitionInsertStatement.setString(14, partition.everyClause);
+                    tablePartitionInsertStatement.setBoolean(15, partition.isDefault);
+                    tablePartitionInsertStatement.setString(16, partition.boundary);
+                    tablePartitionInsertStatement.setInt(17, partition.relTuples);
+                    tablePartitionInsertStatement.setInt(18, partition.relPages);
+
+                    tablePartitionInsertStatement.addBatch();
+
+                    Iterator<Map.Entry<String, Partition>> childPartitionIterator = partition.childPartitions.entrySet().iterator();
+                    while (childPartitionIterator.hasNext()) {
+                        Partition childPartition = childPartitionIterator.next().getValue();
+                        //persist childPartition infromatino in database
+                        childPartitionInsertStatement.setInt(1, tableId);
+                        childPartitionInsertStatement.setInt(2, partitionId);
+                        childPartitionInsertStatement.setString(3, partition.tableName);
+                        childPartitionInsertStatement.setString(4, partition.partitionName);
+                        childPartitionInsertStatement.setInt(5, partition.level);
+                        childPartitionInsertStatement.setString(6, partition.type);
+                        childPartitionInsertStatement.setInt(7, partition.rank);
+                        childPartitionInsertStatement.setInt(8, partition.position);
+                        childPartitionInsertStatement.setString(9, partition.listValues);
+                        childPartitionInsertStatement.setString(10, partition.rangeStart);
+                        childPartitionInsertStatement.setBoolean(11, partition.rangeStartInclusive);
+                        childPartitionInsertStatement.setString(12, partition.rangeEnd);
+                        childPartitionInsertStatement.setBoolean(13, partition.rangeEndInclusive);
+                        childPartitionInsertStatement.setString(14, partition.everyClause);
+                        childPartitionInsertStatement.setBoolean(15, partition.isDefault);
+                        childPartitionInsertStatement.setString(16, partition.boundary);
+                        childPartitionInsertStatement.setInt(17, partition.relTuples);
+                        childPartitionInsertStatement.setInt(18, partition.relPages);
+
+                        childPartitionInsertStatement.addBatch();
+                    }
+                }
+
+                //Check for recommendations for this table, if any then persist it in database
+
+                Iterator<Map.Entry<String, Recommendation>> recommandationsIterator = tablesList.recommendations.entrySet().iterator();
+
+                while (recommandationsIterator.hasNext()) {
+                    Recommendation recommendation = recommandationsIterator.next().getValue();
+                    if (currTable.tableName.equals(recommendation.tableName) && currTable.schema.equals(recommendation.schema)) {
+                        //persist recommandation in database
+                        //wl_table_id, oid, schema, table_name, type, description, anamoly
+                        tableRecommandationInsertStatement.setInt(1, tableId);
+                        tableRecommandationInsertStatement.setString(2, recommendation.oid);
+                        tableRecommandationInsertStatement.setString(3, recommendation.schema);
+                        tableRecommandationInsertStatement.setString(4, recommendation.tableName);
+                        tableRecommandationInsertStatement.setString(5, recommendation.type.toString());
+                        tableRecommandationInsertStatement.setString(6, recommendation.description);
+                        tableRecommandationInsertStatement.setString(7, recommendation.anamoly);
+
+                        tableRecommandationInsertStatement.addBatch();
+                    }
+                }
+
+                tableInsertStatement.addBatch();
+            }
+
+            tableInsertStatement.executeBatch();
+            columnInsertStatement.executeBatch();
+            tableDKInsertStatement.executeBatch();
+            tablePartitionColumnInsertStatement.executeBatch();
+            tableJoinInsertStatement.executeBatch();
+            tableJoinTupleInsertStatement.executeBatch();
+            tablePartitionInsertStatement.executeBatch();
+            tableRecommandationInsertStatement.executeBatch();
+        }catch(Exception ex){
+            log.error("Exception in persistInDatabase: " +ex.toString());
+        }
+    }
 
     public String getWorkloadJSON(int workloadId){
         String workloadJSON = "";

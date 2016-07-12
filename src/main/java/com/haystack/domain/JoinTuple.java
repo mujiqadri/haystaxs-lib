@@ -11,7 +11,6 @@ public class JoinTuple {
     public String leftcolumn;
     public String rightcolumn;
 
-
     public boolean matchJoinConditions(HashMap<String, JoinTuple> joinTupleHashMap) {
         boolean isMatched = false;
         try {

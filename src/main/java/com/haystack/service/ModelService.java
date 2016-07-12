@@ -398,6 +398,10 @@ public class ModelService {
         }
     }
 
+    public Tables getTableList(){
+        return tablelist;
+    }
+
     public void scoreModel(){
         try {
             float totalWorkloadScore = 0;

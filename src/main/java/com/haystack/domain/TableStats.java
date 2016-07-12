@@ -61,6 +61,7 @@ public class TableStats {
     public float getModelScore(){
         return modelScore;
     }
+    public double getExecutionTime(){return executionTime;}
 
     public void addChildStats(Integer iRelPages, Integer iRelTuples) {
         if (iRelPages > 0) {
