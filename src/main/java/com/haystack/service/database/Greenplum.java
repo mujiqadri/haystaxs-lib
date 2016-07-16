@@ -526,8 +526,8 @@ public class Greenplum extends Cluster {
 
             // Now Process Queries Generating AST for each query
 
-            sql = "SELECT A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,\n" +
-                    "                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql\n" +
+            sql = "SELECT  A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, min(A.logtime) logsessiontime, min(A.logtime) AS logtimemin,\n" +
+                    "                 max(A.logtime) AS logtimemax, max(A.logtime) - min(A.logtime) AS logduration, min(logdebug) as sql, A.loghost\n" +
                     "\t\tFROM gp_toolkit.__gp_log_master_ext A\n" +
                     "\t\tWHERE A.logsession IS NOT NULL AND A.logcmdcount IS NOT NULL AND A.logdatabase ='" + gpsd_dbName + "' and logsessiontime > '" + lastRefreshTime + "' "
                     + " AND logdebug not like '%pg_class%'" +
@@ -544,7 +544,8 @@ public class Greenplum extends Cluster {
 
 
             PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchema + ".queries  ( logsession, "
-                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, cluster_id, qrytype, query_log_id) "
+                    + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, cluster_id, qrytype, query_log_id, "
+                    + " loghost) "
                     + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
             Integer currCounter = 0;
@@ -584,6 +585,7 @@ public class Greenplum extends Cluster {
                     statement.setInt(12, clusterId);
                     statement.setString(13, sQryType);
                     statement.setInt(14, maxQryLogId);
+                    statement.setString(15, rs.getString(11));
                     statement.executeUpdate();
 
                     super.generateAST2(query_id, escapedQuery, userSchema);
