@@ -12,7 +12,7 @@
       "storageMode": "append-optimized",
       "compressLevel": 0,
       "noOfRows": 0.0,
-      "sizeOnDisk": 0.0,
+      "sizDeOnisk": 0.0,
       "sizeUnCompressed": 0.0,
       "compressionRatio": 0.0,
       "noOfColumns": 5,

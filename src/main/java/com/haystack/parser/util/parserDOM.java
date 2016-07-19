@@ -62,6 +62,8 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
     public Query queryLevelObj;
     private String currLevel;
 
+    private Stack<String> currLocation;
+
     public String getCurrLevel() {
         return currLevel;
     }
@@ -78,6 +80,9 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         queryHashLevels = new HashMap<Integer, String>();
         queryLevelObj = new Query(null);
         setCurrLevel("1");
+
+        //To keep track of current usage location of column
+        currLocation = new Stack<String>();
     }
 
    /* public ArrayList<Attribute> getAttributesForTable(String tablename, String schemaName) {
@@ -257,14 +262,18 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 
         if (plainSelect.getSelectItems() != null) {
             for (SelectItem item : plainSelect.getSelectItems()) {
+                currLocation.push("in_select");
                 item.accept(this);
+                currLocation.pop();
             }
         }
 
         if (plainSelect.getGroupByColumnReferences() != null) {
             List<Expression> groupByCols = plainSelect.getGroupByColumnReferences();
             for (int i = 0; i < groupByCols.size(); i++) {
+                currLocation.push("in_groupby");
                 groupByCols.get(i).accept(this);
+                currLocation.pop();
 
                 //by: muji
                 //We are not extracting groupby columns because it dose not add another operation usage for the query
@@ -288,7 +297,9 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         }
 
         if (plainSelect.getHaving() != null) {
+            currLocation.push("in_having");
             plainSelect.getHaving().accept(this);
+            currLocation.pop();
         }
 
         if(plainSelect.getFromItem() != null) {
@@ -298,7 +309,6 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
         if (plainSelect.getJoins() != null) {
             for (Join join : plainSelect.getJoins()) {
                 join.getRightItem().accept(this);
-
                 if (join.getOnExpression() != null) {
                     join.getOnExpression().accept(this);
                 }
@@ -308,12 +318,16 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
 
 
         if (plainSelect.getWhere() != null) {
+            currLocation.push("in_where");
             plainSelect.getWhere().accept(this);
+            currLocation.pop();
         }
 
         if(plainSelect.getOrderByElements() != null){
             for(OrderByElement orderByElement : plainSelect.getOrderByElements()){
+                currLocation.push("in_orderby");
                 orderByElement.accept(this);
+                currLocation.pop();
             }
         }
 
@@ -360,6 +374,11 @@ public class parserDOM implements SelectVisitor, FromItemVisitor, ExpressionVisi
             column.nameFQN = tableColumn.getFullyQualifiedName();
 
             queryLevelObj.addColumn(queryLevelObj, column, currLevel);
+
+            //For audittrail
+            String currUsageLocation = currLocation.pop();
+            column.usageLocation = currUsageLocation;
+            currLocation.push(currUsageLocation);
 
         } catch (Exception e) {
             log.error("Error in extracting alias for Column:" + tableColumn.getFullyQualifiedName());

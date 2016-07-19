@@ -533,7 +533,7 @@ public class Greenplum extends Cluster {
                     + " AND logdebug not like '%pg_class%'" +
                     // TODO Added Where for Debug
                     //" and lower(logdebug) like '%where%' " +
-                    "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid\n" +
+                    "\t\tGROUP BY A.logsession, A.logcmdcount, A.logdatabase, A.loguser, A.logpid, A.loghost\n" +
                     "\t\tHAVING length(min(logdebug)) > 0";
 
             ResultSet rsCountQueries = dbConn.execQuery("SELECT COUNT(*) FROM (" + sql + ") AS X;");
@@ -546,7 +546,7 @@ public class Greenplum extends Cluster {
             PreparedStatement statement = haystackDBConn.prepareStatement("INSERT INTO " + userSchema + ".queries  ( logsession, "
                     + " logcmdcount, logdatabase, loguser, logpid, logsessiontime, logtimemin, logtimemax, logduration, sql, id, cluster_id, qrytype, query_log_id, "
                     + " loghost) "
-                    + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                    + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
             Integer currCounter = 0;
             Integer lastPercentageUpdated = -1;
@@ -585,7 +585,7 @@ public class Greenplum extends Cluster {
                     statement.setInt(12, clusterId);
                     statement.setString(13, sQryType);
                     statement.setInt(14, maxQryLogId);
-                    statement.setString(15, rs.getString(11));
+                    statement.setString(15, rs.getString("loghost"));
                     statement.executeUpdate();
 
                     super.generateAST2(query_id, escapedQuery, userSchema);

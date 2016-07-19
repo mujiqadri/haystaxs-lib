@@ -118,7 +118,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
         ms.setTableList(tablelist);
         //ms.annotateModel(qry,clusterService.tablelist);
 
-        ms.processSQL(1, qry, null, null, null, 400.5, 3, "tpcds");
+        ms.processSQL(1, qry, null, null, 400.5, 3, "tpcds");
         ms.scoreModel();
         String str = ms.getModelJSON();
 
@@ -208,7 +208,97 @@ public class ModelServiceTestSingleQuery extends TestCase {
         ms.setTableList(tablelist);
         //ms.annotateModel(qry,clusterService.tablelist);
 
-        ms.processSQL(1, qry, null, null, null, 400.5, 3, "tpcds");
+        ms.processSQL(1, qry, null, null, 400.5, 3, "tpcds");
+        ms.scoreModel();
+        String str = ms.getModelJSON();
+
+        System.out.print(str);
+    }
+
+    public void testProcessSQLForUpdate() throws Exception {
+
+        String myQuery =
+                "select  \n" +
+                        "  cd_gender,\n" +
+                        "  cd_marital_status,\n" +
+                        "  cd_education_status,\n" +
+                        "  count(*) cnt1,\n" +
+                        "  cd_purchase_estimate,\n" +
+                        "  count(*) cnt2,\n" +
+                        "  cd_credit_rating,\n" +
+                        "  count(*) cnt3,\n" +
+                        "  cd_dep_count,\n" +
+                        "  count(*) cnt4,\n" +
+                        "  cd_dep_employed_count,\n" +
+                        "  count(*) cnt5,\n" +
+                        "  cd_dep_college_count,\n" +
+                        "  count(*) cnt6\n" +
+                        " from\n" +
+                        "  customer c,customer_address ca,customer_demographics\n" +
+                        " where\n" +
+                        "  c.c_current_addr_sk = ca.ca_address_sk and\n" +
+                        "  ca_county in ('Walker County','Richland County','Gaines County','Douglas County','Dona Ana County') and\n" +
+                        "  cd_demo_sk = c.c_current_cdemo_sk and \n" +
+                        "  exists (select *\n" +
+                        "          from store_sales,date_dim\n" +
+                        "          where c.c_customer_sk = ss_customer_sk and\n" +
+                        "                ss_sold_date_sk = d_date_sk and\n" +
+                        "                d_year = 2002 and\n" +
+                        "                d_moy between 4 and 4+3) and\n" +
+                        "   (exists (select *\n" +
+                        "            from web_sales,date_dim\n" +
+                        "            where c.c_customer_sk = ws_bill_customer_sk and\n" +
+                        "                  ws_sold_date_sk = d_date_sk and\n" +
+                        "                  d_year = 2002 and\n" +
+                        "                  d_moy between 4 ANd 4+3) or \n" +
+                        "    exists (select catalog_sales.* \n" +
+                        "            from catalog_sales,date_dim\n" +
+                        "            where c.c_customer_sk = cs_ship_customer_sk and\n" +
+                        "                  cs_sold_date_sk = d_date_sk and\n" +
+                        "                  d_year = 2002 and\n" +
+                        "                  d_moy between 4 and 4+3))\n" +
+                        " group by cd_gender,\n" +
+                        "          cd_marital_status,\n" +
+                        "          cd_education_status,\n" +
+                        "          cd_purchase_estimate,\n" +
+                        "          cd_credit_rating,\n" +
+                        "          cd_dep_count,\n" +
+                        "          cd_dep_employed_count,\n" +
+                        "          cd_dep_college_count\n" +
+                        " order by cd_gender,\n" +
+                        "          cd_marital_status,\n" +
+                        "          cd_education_status,\n" +
+                        "          cd_purchase_estimate,\n" +
+                        "          cd_credit_rating,\n" +
+                        "          cd_dep_count,\n" +
+                        "          cd_dep_employed_count,\n" +
+                        "          cd_dep_college_count\n" +
+                        "limit 100;";
+
+//        String myQuery = "SELECT c1, c2 FROM t1, t2 WHERE c1 = c2 ORDER BY c1";
+
+        //myQuery = " select a as b from T;";
+        Query qry = new Query();
+        qry.setQueryText(myQuery);
+
+
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        ClusterService clusterService = new ClusterService(configProperties);
+
+        // Load Table stats into memory
+//        Tables tablelist = clusterService.getTablesfromCluster();
+
+        Tables tablelist = clusterService.getTables(37);
+        ModelService ms = new ModelService();
+
+        // Set the Cached Tables into the Model for future annotation
+        ms.setTableList(tablelist);
+        //ms.annotateModel(qry,clusterService.tablelist);
+
+        ms.processSQL(1, qry, null, null, 400.5, 3, "tpcds");
         ms.scoreModel();
         String str = ms.getModelJSON();
 
@@ -319,8 +409,8 @@ public class ModelServiceTestSingleQuery extends TestCase {
         // Add Refresh Interval to Last refresh time and then check
         Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
 
-        if (newQueryRefreshTime.compareTo(currentTime) < 0) { // if this time is less than current_time, if yes then refresh queries
+//        if (newQueryRefreshTime.compareTo(currentTime) < 0) { // if this time is less than current_time, if yes then refresh queries
             cluster.loadQueries(clusterId, lastQueryRefreshTime);
-        }
+//        }
     }
 }

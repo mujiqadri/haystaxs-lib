@@ -57,12 +57,18 @@ public class ModelService {
     private Date model_creation_date;
     private Integer userId = null;
 
+    private String quryType;
+
     private  DBConnectService dbConnectService;
+
+    private HashMap<String, HashMap<String, Set<Column>>> columnsForAuditTrail;
 
     public ModelService(){
         tablelist = new Tables();
         configProperties = new ConfigProperties();
         dbConnectService = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
+
+        columnsForAuditTrail = new HashMap<String, HashMap<String, Set<Column>>>();
 
         try {
             configProperties.loadProperties();
@@ -75,6 +81,14 @@ public class ModelService {
 
     public void setTableList(Tables tbllist){
         this.tablelist = tbllist;
+    }
+
+    public HashMap<String, HashMap<String, Set<Column>>> getColumnsForAuditTrail(){
+        return columnsForAuditTrail;
+    }
+
+    public void clearColumnsForAuditTrail(){
+        columnsForAuditTrail = new HashMap<String, HashMap<String, Set<Column>>>();
     }
 
     private int getDistinctNoOfRows(String schema, String tableName, String columnName, Credentials credentials) throws SQLException, IOException, ClassNotFoundException {
@@ -512,11 +526,11 @@ public class ModelService {
         return tablelist.getJSON();
     }
 
-    public void processSQL(Integer queryId, Query query, String clusterUser, String clusterDatabase, String schema, double executionTime, Integer userId, String current_search_path) throws Exception {
-        processSQL(queryId, query.getQueryText(), clusterUser, clusterDatabase, schema, executionTime, userId, current_search_path);
+    public void processSQL(Integer queryId, Query query, String clusterUser, String clusterDatabase, double executionTime, Integer userId, String current_search_path) throws Exception {
+        processSQL(queryId, query.getQueryText(), clusterUser, clusterDatabase, executionTime, userId, current_search_path);
     }
 
-    public void processSQL(Integer queryId, String query, String clusterUser, String clusterDatabase, String schema, double executionTime, Integer userId, String current_search_path) throws Exception {
+    public void processSQL(Integer queryId, String query, String clusterUser, String clusterDatabase, double executionTime, Integer userId, String current_search_path) throws Exception {
         parserDOM currtablesNF = new parserDOM();
 
         String jsonAST = "";
@@ -583,6 +597,7 @@ public class ModelService {
             log.debug("=============== CONDITIONS EXTRACTED =================");
 
             log.info("ModelService.processSQL Complete");
+            quryType = stmtType;
             return;
         }
         catch(Exception e){
@@ -592,6 +607,8 @@ public class ModelService {
             throw e;
         }
     }
+
+    public String getQueryType(){return this.quryType;}
 
     public boolean resolve(com.haystack.visitor.Query queryLevelObj, double executionTime, String current_search_path){
 
@@ -631,6 +648,7 @@ public class ModelService {
                             tmpAttr.tableName = tableColumn.getResolvedTableName();
                             tmpAttr.schema = tableColumn.getResolvedSchemaName();
                             tmpAttr.nameFQN = tableColumn.toString();
+                            tmpAttr.usageLocation = "in_select";
                             processProjectedColumn(tmpAttr, queryLevelObj.tables, current_search_path);
                         }
 
@@ -1071,6 +1089,18 @@ public class ModelService {
                 HSException hsException = new HSException("ModelService.resolveColumn()", "Exception in resolving column.",
                         e.toString(), "column=" + column.nameFQN, userId);
             }
+
+        if(found) {
+            if (!columnsForAuditTrail.containsKey(column.usageLocation)) {
+                columnsForAuditTrail.put(column.usageLocation, new HashMap<String, Set<Column>>());
+            }
+            HashMap<String, Set<Column>> currLocationHashmap = columnsForAuditTrail.get(column.usageLocation);
+            if(!currLocationHashmap.containsKey(col.getResolvedTableName())){
+                currLocationHashmap.put(col.getResolvedTableName(), new HashSet<Column>());
+            }
+            currLocationHashmap.get(col.getResolvedTableName()).add(col);
+        }
+
         return col;
     }
 

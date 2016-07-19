@@ -2,10 +2,7 @@ package com.haystack.service;
 
 import com.haystack.domain.*;
 import com.haystack.parser.expression.StringValue;
-import com.haystack.util.ConfigProperties;
-import com.haystack.util.Credentials;
-import com.haystack.util.DBConnectService;
-import com.haystack.util.HSException;
+import com.haystack.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,7 +105,13 @@ public class CatalogService {
 
     public void processWorkload(Integer workloadId) {
         Integer user_id = null;
+        GeoLocation geoLocation = new GeoLocation();
+
         try {
+
+            //For AuditTrail
+            String queryAuditTrailSQL = "INSERT INTO " +haystackSchema +".query_audit_trail(query_id, log_user, database_name, schema_name, table_name, column_name, usage_type, usage_location, ip_address, geo_location, access_time)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+            PreparedStatement preparedStatement = dbConnect.prepareStatement(queryAuditTrailSQL);
 
             // Fetch Cluster Credentials from CLUSTER against the WorkloadID
             // Load this in the TableList
@@ -182,7 +185,7 @@ public class CatalogService {
             int percentProcessed = 0;
             int currQryCounter = 0;
 
-            sql = "select loguser, logdatabase, id as queryId, sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration from " + whereSQL + orderbySQL;
+            sql = "select cluster_id, loguser, logdatabase, id as queryId, sql, EXTRACT(EPOCH FROM logduration) as duration_Seconds, logduration, logsessiontime, loghost from " + whereSQL + orderbySQL;
             ResultSet rsQry = dbConnect.execQuery(sql);
 
             // Create a UserInbox Message for Updated Processing
@@ -206,9 +209,10 @@ public class CatalogService {
                     Integer queryId = rsQry.getInt("queryId");
                     currQry = currQry.toLowerCase(); // convert sql to lower case for ease of processing
 
-
                     Timestamp duration = rsQry.getTimestamp("logduration");
                     Integer durationSeconds = rsQry.getInt("duration_seconds");
+                    Timestamp logsessiontime = rsQry.getTimestamp("logsessiontime");
+                    String logHost = rsQry.getString("loghost");
 
                     String[] arrQry = currQry.split(";");
 
@@ -234,12 +238,59 @@ public class CatalogService {
                         nQry = removeScatterBy(nQry);
 
                         try {
-                            ms.processSQL(queryId, nQry, clusterUser, clusterDatabaseName, null, durationSeconds, user_id, current_search_path);
+                            ms.processSQL(queryId, nQry, clusterUser, clusterDatabaseName, durationSeconds, user_id, current_search_path);
 //                            ms.processSQL(queryId, nQry, durationSeconds, user_id, current_search_path);
+
+                            //For AuditTrail
+                            String queryType  = ms.getQueryType();
+
+                            HashMap<String, HashMap<String, Set<Column>>> columnsForAuditTrail = ms.getColumnsForAuditTrail();
+                            Iterator<Map.Entry<String, HashMap<String, Set<Column>>>> usageLocationIterator = columnsForAuditTrail.entrySet().iterator();
+
+                            while(usageLocationIterator.hasNext()){
+                                Map.Entry<String, HashMap<String, Set<Column>>> usageLocationEntry = usageLocationIterator.next();
+                                String usageLocation = usageLocationEntry.getKey();
+
+                                HashMap<String, Set<Column>> tablesHashMap = usageLocationEntry.getValue();
+                                Iterator<Map.Entry<String, Set<Column>>> tablesIterator = tablesHashMap.entrySet().iterator();
+
+                                while(tablesIterator.hasNext()){
+                                    Map.Entry<String, Set<Column>> currentTable = tablesIterator.next();
+                                    Set<Column> columns = currentTable.getValue();
+
+                                    Iterator<Column> columnIterator = columns.iterator();
+                                    while (columnIterator.hasNext()){
+                                        Column column = columnIterator.next();
+                                        String columnName = column.column_name;
+                                        String tableName = column.getResolvedTableName();
+                                        String tableSchemaName = column.getResolvedSchemaName();
+
+                                        String geoLocationLocation = "";
+                                        if(logHost != null && !logHost.isEmpty()){
+                                            geoLocation.setIP(logHost);
+                                            geoLocationLocation = geoLocation.getLatitude() +"," +geoLocation.getLongitude();
+                                        }
+
+                                        preparedStatement.setInt(1, queryId);
+                                        preparedStatement.setString(2, clusterUser);
+                                        preparedStatement.setString(3, clusterDatabaseName);
+                                        preparedStatement.setString(4, tableSchemaName);
+                                        preparedStatement.setString(5, tableName);
+                                        preparedStatement.setString(6, columnName);
+                                        preparedStatement.setString(7, queryType);
+                                        preparedStatement.setString(8, usageLocation);
+                                        preparedStatement.setString(9, logHost);
+                                        preparedStatement.setString(10,geoLocationLocation);
+                                        preparedStatement.setTimestamp(11, logsessiontime);
+                                        preparedStatement.addBatch();
+                                    }
+                                }
+                            }
                         } catch (Exception e) {
                             log.debug("Skip Statement in Processing WorkloadId:" + workloadId + " SQL:" + nQry.toString());
                         }
                     }
+
                 } catch (Exception e) {
                     log.error("Error in Processing SQL:" + workloadId + ": search_path=" + current_search_path + " SQL=" + nQry + " Exception:" + e.toString());
                 }
@@ -247,11 +298,13 @@ public class CatalogService {
 
             rsQry.close();
 
+            preparedStatement.executeBatch(); //Persist AuditTrail Data in Database
+
             ms.scoreModel();
             ms.generateRecommendations(cluster_id);
             String model_json = ms.getModelJSON();
 
-            //ToDO:persist tables data
+            //Persist the tables states and everything in database
             persistInDatabase(workloadId, ms.getTableList());
 
             // Create a UserInbox Message for Completed Processing
@@ -275,7 +328,6 @@ public class CatalogService {
             HSException hsException = new HSException("CatalogService.processWorkload()", "Error in processing workload", e.toString(), "WorkloadId=" + workloadId, user_id);
         }
     }
-
 
     public void persistInDatabase(int workloadId, Tables tablesList) {
         String tableInsertSQL = "INSERT INTO " +haystackSchema +".wl_table(wl_table_id, workload_id, oid, table_name, database, schema, dkarray, skew, iscolumnar, iscompressed, storage_mode, compress_level, noofrows, size_on_disk, size_uncompressed, compression_ratio, no_of_columns, ispartitioned, relpage, size_for_display_compressed, size_for_display_uncompressed, model_score, usage_frequency, execution_time, workload_score)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";

@@ -14,6 +14,8 @@ public class Attribute {
     public int length;
     public String nameFQN;
 
+    public String usageLocation;
+
     public Attribute (){
 
     }
