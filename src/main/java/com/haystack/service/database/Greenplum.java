@@ -602,7 +602,7 @@ public class Greenplum extends Cluster {
                     "FROM \n" +
                     "\t(select ast_id, count(*) as count , sum(extract(epoch from C.logduration)) as total_duration\n" +
                     "\tfrom " + userSchema + ".ast_queries B, " + userSchema + ".queries C\n" +
-                    "\twhere B.queries_id = C.id \n" +
+                    "\twhere B.queries_id = C.id and query_log_id = " + maxQryLogId + " \n" +
                     "\tgroup by ast_id ) X\n" +
                     "WHERE ast.ast_id = X.ast_id;";
             haystackDBConn.execNoResultSet(sql);

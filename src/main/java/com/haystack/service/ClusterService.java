@@ -200,11 +200,15 @@ import java.util.Properties;
                     }
 
                     //Set is_refreshing to FALSE for this cluster so that user can perform refresh again.
-                    sql = "UPDATE " + haystackSchema +".cluster SET is_refreshing = false WHERE cluster_id = " + clusterId;
-                    dbConnect.execNoResultSet(sql);
+                    //sql = "UPDATE " + haystackSchema +".cluster SET is_refreshing = false WHERE cluster_id = " + clusterId;
+                    //dbConnect.execNoResultSet(sql);
 
                 } catch (Exception e) {
+
                     log.error("Error in refreshing cluster cluster_id= " + clusterId + " Exception=" + e.toString());
+                } finally {
+                    sql = "UPDATE " + haystackSchema + ".cluster SET is_refreshing = false WHERE cluster_id = " + clusterId;
+                    dbConnect.execNoResultSet(sql);
                 }
             }
             rs.close();

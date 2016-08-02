@@ -16,6 +16,8 @@ public class Column {
     public Integer numeric_precision;
     public Integer numeric_precision_radix;
     public Integer numeric_scale;
+    public Integer sort_col_order;  // For Redshift
+    public String encoding;         // For Redshift
     private Integer usageFrequency;
     private Integer whereUsage;
     public HashMap<String, String> whereConditionValue; // Stores all the where condition values against this column

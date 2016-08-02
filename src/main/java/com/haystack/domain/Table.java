@@ -14,6 +14,7 @@ public class Table {
     public String schema;
     public String tableName;
     public String dkArray;
+    public String distributionType;
     public TableStats stats;
 
 

@@ -309,7 +309,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     public void testGetTables() throws Exception {
 
 
-        Integer clusterId = 37;
+        Integer clusterId = 38;
 
 
         ConfigProperties configProperties = new ConfigProperties();
@@ -323,7 +323,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
     public void testRefresh() throws Exception {
 
-        Integer clusterId = 37;
+        Integer clusterId = 38;
 
         ConfigProperties configProperties = new ConfigProperties();
 
