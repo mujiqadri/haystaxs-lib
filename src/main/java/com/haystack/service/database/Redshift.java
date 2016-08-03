@@ -288,7 +288,7 @@ public class Redshift extends Cluster {
             // Now Process Queries Generating AST for each query
 
             sql = "select X.query as logsession, NoOfLines as logcmdcount, X.database as logdatabase, usr.usename as loguser, X.pid as logpid, starttime as logsessiontime,\n" +
-                    "starttime as logtimemin, endtime as logtimemax, (endtime - starttime)::interval as logduration,\n" +
+                    "starttime as logtimemin, endtime as logtimemax, (endtime - starttime) as logduration,\n" +
                     "Y.listagg as sql , Z.remotehost as loghost, len(Y.listagg),cast(extract(epoch from (endtime - starttime)*1000) as numeric(18,3)) as logdurationmilliseconds\n" +
                     "from stl_query X INNER JOIN pg_user usr\n" +
                     "\tON X.userid = usr.usesysid\n" +
