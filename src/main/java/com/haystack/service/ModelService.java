@@ -91,7 +91,7 @@ public class ModelService {
         columnsForAuditTrail = new HashMap<String, HashMap<String, Set<Column>>>();
     }
 
-    private int getDistinctNoOfRows(String schema, String tableName, String columnName, Credentials credentials) throws SQLException, IOException, ClassNotFoundException {
+    /*private int getDistinctNoOfRows(String schema, String tableName, String columnName, Credentials credentials) throws SQLException, IOException, ClassNotFoundException {
 
         dbConnectService.setCredentials(credentials);
 
@@ -107,9 +107,10 @@ public class ModelService {
         totalNoDistinctValues = result.getInt("no_of_distinct_value");
 
         return totalNoDistinctValues;
-    }
+    }*/
 
-    private Credentials getCredentials(int cluster_id) throws IOException, SQLException, ClassNotFoundException {
+    //TODO: remove this method once every thing works fine
+    /*private Credentials getCredentials(int cluster_id) throws IOException, SQLException, ClassNotFoundException {
         ConfigProperties configProperties = new ConfigProperties();
         configProperties.loadProperties();
 
@@ -152,17 +153,18 @@ public class ModelService {
         }
 
         return clusterCred;
-    }
+    }*/
 
-    private Recommendation createNewRecommendation(Table currTable, Recommendation.RecommendationType type) {
+    /*private Recommendation createNewRecommendation(Table currTable, Recommendation.RecommendationType type) {
         Recommendation recommendation = new Recommendation();
         recommendation.schema = currTable.schema;
         recommendation.tableName = currTable.tableName;
         recommendation.oid = currTable.oid;
         recommendation.type = type;
         return recommendation;
-    }
-    public void generateRecommendations(int cluster_id){
+    }*/
+
+    /*public void generateRecommendations(int cluster_id){
 
         try {
 
@@ -410,7 +412,7 @@ public class ModelService {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
+    }*/
 
     public Tables getTableList(){
         return tablelist;
@@ -517,7 +519,6 @@ public class ModelService {
                 table.stats.rank = rank;
                 table.stats.percentile = cumPercentage;
             }
-
         } catch (Exception e) {
             log.error(e.toString());
         }

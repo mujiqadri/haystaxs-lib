@@ -114,7 +114,7 @@ public class DBConnectService {
         }
 
         this.conn = DriverManager.getConnection(this.getdbConnectURL(), this.user, this.pass);
-
+        this.conn.setAutoCommit(true);
         log.trace("DBConnect Success:" + this.host );
         return true;
     }

@@ -40,6 +40,8 @@ import java.util.Properties;
     static Logger log = LoggerFactory.getLogger(ModelService.class.getName());
     private DBConnectService dbConnect ;
 
+    private Cluster cluster;;
+
     //public ArrayList < Query > querylist = new ArrayList<Query>();
     //public ArrayList<TablesNamesFinder> tblNamesFinderlist = new ArrayList<TablesNamesFinder>();
 
@@ -298,7 +300,6 @@ import java.util.Properties;
     public Tables getTables(Integer cluster_id) {
         Tables tablelist = new Tables();
         String clusterType = "";
-        Cluster cluster;
         Credentials clusterCred = new Credentials();
         try {
 
@@ -352,6 +353,8 @@ import java.util.Properties;
         return tablelist;
     }
 
-
+    public Cluster getCurrentCluster(){
+        return cluster;
+    }
 
 }

@@ -650,5 +650,272 @@ public class Greenplum extends Cluster {
 
     }
 
+    public void generateRecommendations(int cluster_id, Tables tablelist){
+
+        try {
+
+            Credentials credentials = getCredentials(cluster_id);
+
+            // Fetch Recommendation Engine settings from config.properties file
+            Double columnarThresholdPercent = Double.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
+            Double topNPercent = Double.valueOf(configProperties.properties.getProperty("re.topNPercent"));
+            Double bottomNPercent = Double.valueOf(configProperties.properties.getProperty("re.bottomNPercent"));
+
+            Integer recId = 1;
+
+            Iterator<Map.Entry<String, Table>> entries = tablelist.tableHashMap.entrySet().iterator();
+            while (entries.hasNext()) {
+                Map.Entry<String, Table> entry = entries.next();
+                String currKey = entry.getKey();
+                Table currTable = entry.getValue();
+
+                if (currTable.joins.size() > 0) { // If there are no joins then ignore this Table
+                    // A) Distribution Key:
+                    //     Check if the current distibution key is being used in most of the join,
+                    //     if not then recommend DK which is used in joins (higher workload score) for larger tables
+                    Iterator<Map.Entry<String, Join>> joins = currTable.joins.entrySet().iterator();
+                    float maxConfidence = -1;
+//                    ArrayList<String> maxConfidenceCandidateDK = new ArrayList<String>();
+                    TreeMap<Float, String> maxConfidenceCandidateDK = new TreeMap<Float, String>(new Comparator<Float>() {
+                        @Override
+                        public int compare(Float o1, Float o2) {
+                            //Sorting in decending order.
+                            return o2.compareTo(o1);
+                        }
+                    }); //Key = Confidence of Column, Value = Name Of Column
+
+                    while (joins.hasNext()) {
+
+                        Map.Entry<String, Join> join = joins.next();
+                        String joinKey = join.getKey();
+                        Join currJoin = join.getValue();
+
+                        if (currJoin.getConfidence() > maxConfidence) {  // Current Join Usage Score is greater makes this the max one
+                            for (Map.Entry<String, JoinTuple> entryJT : currJoin.joinTuples.entrySet()) {
+                                if (currTable.tableName.equals(currJoin.leftTable)) {  // Add left column
+//                                    maxConfidenceCandidateDK.add(entryJT.getValue().leftcolumn);
+                                    maxConfidenceCandidateDK.put(currJoin.getConfidence(), entryJT.getValue().leftcolumn);
+                                } else { // Add Right Column
+//                                    maxConfidenceCandidateDK.add(entryJT.getValue().rightcolumn);
+                                    maxConfidenceCandidateDK.put(currJoin.getConfidence(), entryJT.getValue().rightcolumn);
+                                }
+                            }
+                            maxConfidence = currJoin.getConfidence();
+                        }
+                        // A.2) Check if attribute data types match for this join, if not add this recommendation
+                        for (Map.Entry<String, JoinTuple> entryJT : currJoin.joinTuples.entrySet()) {
+                            JoinTuple currJT = entryJT.getValue();
+                            Column leftColumn = tablelist.findColumn(currJoin.leftSchema, currJoin.leftTable, currJT.leftcolumn, "");
+                            Column rightColumn = tablelist.findColumn(currJoin.rightSchema, currJoin.rightTable, currJT.rightcolumn, "");
+
+                            Boolean mismatch = false;
+                            String desc = "Datatype mismatch for join between " + currJoin.leftSchema + "." + currJoin.leftTable + "." + currJT.leftcolumn +
+                                    " and " + currJoin.rightSchema + "." + currJoin.rightTable + "." + currJT.rightcolumn;
+                            String anamoly = leftColumn.isMatchDataType(rightColumn);
+
+                            if (anamoly.length() > 0) {
+                                Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DATATYPE);
+                                recommendation.description = desc;
+                                recommendation.anamoly = anamoly;
+                                tablelist.recommendations.put(recId.toString(), recommendation);
+                                recId++;
+                            }
+                        }
+                    }
+                    // A.1) Get Distribution Key, if it matches the candidateDK then ignore else add Recommendation with the CandidateDK
+
+                    Iterator<Map.Entry<Float, String>> maxConfidenceCandidateDKIterator = maxConfidenceCandidateDK.entrySet().iterator();
+
+                    String recDescTxt = "";
+                    String recAnamolyTxt = "";
+
+                    while(maxConfidenceCandidateDKIterator.hasNext()){
+                        Map.Entry<Float, String> columnAndConfidenceValue = maxConfidenceCandidateDKIterator.next();
+                        Float confidenceOfColumn = columnAndConfidenceValue.getKey();
+                        String candidateColumn = columnAndConfidenceValue.getValue();
+
+                        if (currTable.dk.containsKey(candidateColumn) == false) {
+                            // DK and Candidate Key Mismatch, add recommendation for Candidate Key
+                            recDescTxt += candidateColumn +",";
+                            recAnamolyTxt += candidateColumn +": " +confidenceOfColumn +",";
+                        }
+                    }
+
+                    //if recDescTxt ends with ',' then remove the trailling ','
+                    if(recDescTxt.endsWith(",")){
+                        recDescTxt = recDescTxt.substring(0, recDescTxt.lastIndexOf(","));
+                    }
+
+                    if(recAnamolyTxt.endsWith(",")){
+                        recAnamolyTxt = recAnamolyTxt.substring(0, recAnamolyTxt.lastIndexOf(","));
+                    }
+
+                    //If recDescTxt is not empty that mean it contain a column which need to be recommended
+                    if(recDescTxt.isEmpty() == false){
+                        Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.DK);
+                        recommendation.description = "Distribution key should be set to " +recDescTxt +".";
+                        recommendation.anamoly = "Confidence of key(s) " +recAnamolyTxt +".";
+                        tablelist.recommendations.put(recId.toString(), recommendation);
+                        recId++;
+                    }
+                }
+
+                // Objective Measure of Interestingness, Recommendation should be generated for only TopNPercent of tables
+                // B) Columnar & Compression Rule:
+                //     Check to see if less than 30% (rs.ColumnarThresholdPercent) of attributes are used,
+                //     if yes then check if the table is in TopNPercent in rows (re.topNPercent) threshold
+                //     if yes then
+                //             recommend columnar, if row storage
+                //             recommend compression, if uncompressed
+                Double avgColUsagePercent = currTable.stats.avgColUsage * 100 / currTable.stats.noOfColumns;
+
+                if (avgColUsagePercent <= columnarThresholdPercent) {  // ColAvgUsage is less than ColumnThreshold
+                    if ((100 - currTable.stats.percentile) < topNPercent) { // If Table in TopNPercent then
+                        if (!currTable.stats.isColumnar) { // If Table is heap then recommend columnar
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.STORAGE);
+                            recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be changed to columnar.";
+                            recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " and average column usage in queries:" + avgColUsagePercent + " Threshold: AvgColUsage="
+                                    + columnarThresholdPercent + " topNPercent=" + topNPercent;
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                        if (!currTable.stats.isCompressed) { // Recommend compressing the table if Cluster CPU Usage is less than 70% most of the time
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.COMPRESSION);
+                            recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be compressed if cluster CPU is less than 70% threshold";
+                            recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " and average column usage in queries:" + avgColUsagePercent + " Threshold: AvgColUsage="
+                                    + columnarThresholdPercent + " topNPercent=" + topNPercent;
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                    }
+
+                } else {
+                    // B.2) If average column usage is greater than the threshold  (rs.ColumnarThresholdPercent) then
+                    //      check if the storage type is columnar, then recommend heap storage
+                    if (currTable.stats.isColumnar) {
+                        Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.STORAGE);
+                        recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be changed to heap storage.";
+                        recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " and average column usage in queries:" + avgColUsagePercent + " Threshold: AvgColUsage="
+                                + columnarThresholdPercent + " topNPercent=" + topNPercent;
+                        tablelist.recommendations.put(recId.toString(), recommendation);
+                        recId++;
+                    }
+                }
+
+                // B.3) If the table is in bottomNPercent and if its columnar, then recommend heap
+                //      storage and uncompressed
+                if (currTable.stats.percentile <= bottomNPercent) {
+                    if (currTable.stats.isColumnar) {
+                        Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.STORAGE);
+                        recommendation.description = "Table " + currTable.schema + "." + currTable.tableName + " should be changed to heap storage.";
+                        recommendation.anamoly = "Table Percentile:" + currTable.stats.percentile + " is in the BottomN% smallest tables in the Database. Threshold: bottomNPercent=" + bottomNPercent;
+                        tablelist.recommendations.put(recId.toString(), recommendation);
+                        recId++;
+                    }
+                }
+
+                //Step1: Find That Table Is In TopNPercent Using Perito Principle
+
+                HashMap<String, Column> columnsForSuggestion = new HashMap<String, Column>();
+
+                if((100-topNPercent) <= currTable.stats.percentile){
+
+                    //Step2: Get Those Columns Which Are Used In Where Clause And Add Them In 'columnsForSuggestion' List.
+
+                    Iterator<Column> columnsIterator = currTable.columns.values().iterator();
+
+                    while(columnsIterator.hasNext()){
+                        Column column = columnsIterator.next();
+                        int whereUsage = column.getWhereUsage();
+
+                        if(whereUsage > 0){
+                            columnsForSuggestion.put( column.column_name ,column);
+                        }
+                    }
+                }
+
+                //Step3: Find The Column With Max Cardenality For Recommendation.
+
+                Column recommendedColumn = null;
+                double maxCardenality = 0;
+                int recommendedColumnDistinctNoOfRows = 0;
+
+                Collection<Column> columns = columnsForSuggestion.values();
+
+                for(Column column : columns){
+                    int distinctNoOfRows = getDistinctNoOfRows(currTable.schema, currTable.tableName, column.column_name, credentials);
+
+                    double cardenality = currTable.stats.noOfRows / distinctNoOfRows; //Finding Cardenality using formula : total no of rows in table / total no of distinct rows in column
+
+                    if(cardenality > maxCardenality){
+                        maxCardenality = cardenality;
+                        recommendedColumn = column;
+                        recommendedColumnDistinctNoOfRows = distinctNoOfRows;
+                    }
+                }
+
+                // C) Partitions:
+                //     Check to see if the table is partititioned
+                if (currTable.stats.isPartitioned) {
+                    //    if YES
+                    //         then check if the partitioned attribute is used in most of the where clauses
+                    //         give bias to date attribute, recommend two or three possible options for partition columns
+
+                    //Recommandtaion type= Partition
+                    //Desc: why we select the column, where uses = , cardinality = , distinct no of value = , rank # .
+
+                    if(recommendedColumn != null) {
+
+                        //If Table Is Partitioned On Any Column
+                        if(!currTable.partitionColumn.isEmpty()) {
+                            if(!currTable.partitionColumn.containsKey(recommendedColumn.column_name)){
+                                Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.PARTITION);
+                                recommendation.description = String.format("Why we selected the column %s.%s, Where usage : %d, Cardinality : %.2f, Distinct no of values : %d", recommendedColumn.getResolvedTableName(), recommendedColumn.column_name, recommendedColumn.getWhereUsage(), maxCardenality, recommendedColumnDistinctNoOfRows);
+                                tablelist.recommendations.put(recId.toString(), recommendation);
+                                recId++;
+                            }
+                        }
+                    }
+
+                } else {
+                    //     if NO
+                    //         then check if table is in re.TopNPercent tables by rows
+                    //         if YES
+                    //             then identify the attribute which is used most frequently in where clauses
+
+                    //Check if table is in topNPercent tables by row
+                    if(recommendedColumn != null) {
+                        if((100-topNPercent) <= currTable.stats.percentile) {
+                            Recommendation recommendation = createNewRecommendation(currTable, Recommendation.RecommendationType.PARTITION);
+                            recommendation.description = String.format("Why we selected the column %s.%s, Where usage : %d, Cardinality : %.2f, Distinct no of values : %d", recommendedColumn.getResolvedTableName(), recommendedColumn.column_name, recommendedColumn.getWhereUsage(), maxCardenality, recommendedColumnDistinctNoOfRows);
+                            tablelist.recommendations.put(recId.toString(), recommendation);
+                            recId++;
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int getDistinctNoOfRows(String schema, String tableName, String columnName, Credentials credentials) throws SQLException, IOException, ClassNotFoundException {
+        DBConnectService dbConnectService = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
+        dbConnectService.setCredentials(credentials);
+
+        int totalNoDistinctValues = 0;
+
+        String sql = "SELECT count (DISTINCT " +tableName +"." +columnName +") as no_of_distinct_value FROM " +schema +"." +tableName;
+
+        dbConnectService.connect(credentials);
+
+        ResultSet result = dbConnectService.execQuery(sql);
+
+        result.next();
+        totalNoDistinctValues = result.getInt("no_of_distinct_value");
+
+        return totalNoDistinctValues;
+    }
 
 }

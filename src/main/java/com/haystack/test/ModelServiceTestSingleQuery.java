@@ -9,6 +9,7 @@ import com.haystack.service.ClusterService;
 import com.haystack.service.ModelService;
 import com.haystack.service.database.Cluster;
 import com.haystack.service.database.Greenplum;
+import com.haystack.service.database.Redshift;
 import com.haystack.util.ConfigProperties;
 import com.haystack.util.Credentials;
 import com.haystack.util.DBConnectService;
@@ -323,7 +324,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
     public void testRefresh() throws Exception {
 
-        Integer clusterId = 38;
+        Integer clusterId = 40;
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -335,7 +336,7 @@ public class ModelServiceTestSingleQuery extends TestCase {
     }
 
     public void testWorkload() throws Exception {
-        Integer workloadId = 54;   // 35 for tpc-ds, 20 for citi queries
+        Integer workloadId = 58; //54, 58
 
         ConfigProperties configProperties = new ConfigProperties();
 
@@ -412,5 +413,117 @@ public class ModelServiceTestSingleQuery extends TestCase {
 //        if (newQueryRefreshTime.compareTo(currentTime) < 0) { // if this time is less than current_time, if yes then refresh queries
             cluster.loadQueries(clusterId, lastQueryRefreshTime);
 //        }
+    }
+
+    public void testRedshiftLoadQuries() throws SQLException, IOException, ClassNotFoundException {
+
+        ConfigProperties configProperties = new ConfigProperties();
+        configProperties.loadProperties();
+        String haystackSchema = configProperties.properties.getProperty("main.schema");
+
+        int clusterId = 40;
+
+        String sql = "select cluster_id, cluster_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+                " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
+                ".cluster where host is not null and is_active = true and cluster_id = " + clusterId + ";";
+
+        DBConnectService dbConn = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
+        dbConn.connect(configProperties.getHaystackDBCredentials());
+        ResultSet rs = dbConn.execQuery(sql);
+
+        rs.next();
+
+        String sHost = rs.getString("host");
+        String dbname = rs.getString("dbname");
+        String username = rs.getString("username");
+        String password = rs.getString("password");
+        Integer port = rs.getInt("port");
+        Timestamp lastQueryRefreshTime = rs.getTimestamp("last_queries_refreshed_on");
+        Timestamp currentTime = rs.getTimestamp("current_time");
+
+        Credentials clusterCred = new Credentials();
+        clusterCred.setDatabase(dbname);
+        clusterCred.setHostName(sHost);
+        clusterCred.setPassword(password);
+        clusterCred.setPort(""+port);
+        clusterCred.setUserName(username);
+
+        Redshift cluster = new Redshift();
+        cluster.connect(clusterCred);
+
+        Integer queryRefreshIntervalHours = Integer.parseInt(configProperties.properties.getProperty("query.refresh.interval.hours"));
+        // Add Refresh Interval to Last refresh time and then check
+        Timestamp newQueryRefreshTime = new Timestamp(lastQueryRefreshTime.getTime() + (queryRefreshIntervalHours * 60 * 60 * 1000));
+
+//        if (newQueryRefreshTime.compareTo(currentTime) < 0) { // if this time is less than current_time, if yes then refresh queries
+        cluster.loadQueries(clusterId, lastQueryRefreshTime);
+//        }
+    }
+
+    public void testProcessSQLForRedshift() throws Exception {
+
+        String myQuery = "select\n" +
+                "  ac.ad_campaign_id as ad_campaign_id,\n" +
+                "  adv.advertiser_id as advertiser_id,\n" +
+                "  cs.spending as spending,\n" +
+                "  ims.imp_total as imp_total,\n" +
+                "  cs.click_total as click_total,\n" +
+                "  (1.0*click_total)/imp_total as CTR,\n" +
+                "  spending/click_total as CPC,\n" +
+                "  spending/(imp_total/1000) as CPM\n" +
+                "from\n" +
+                "  ad_campaigns ac\n" +
+                "join\n" +
+                "  advertisers adv on (ac.advertiser_id = adv.advertiser_id)\n" +
+                "join\n" +
+                "(\n" +
+                "  select\n" +
+                "    il.ad_campaign_id,\n" +
+                "    count(*) as imp_total\n" +
+                "  from\n" +
+                "    imp_logs il\n" +
+                "  group by\n" +
+                "    il.ad_campaign_id\n" +
+                ") ims on (ims.ad_campaign_id = ac.ad_campaign_id)\n" +
+                "join\n" +
+                "(\n" +
+                "  select\n" +
+                "    cl.ad_campaign_id,\n" +
+                "    sum(cl.bid_price) as spending,\n" +
+                "    count(*) as click_total\n" +
+                "  from\n" +
+                "    click_logs cl\n" +
+                "  group by\n" +
+                "    cl.ad_campaign_id\n" +
+                ") cs on (cs.ad_campaign_id = ac.ad_campaign_id);";
+
+//        String myQuery = "SELECT c1, c2 FROM t1, t2 WHERE c1 = c2 ORDER BY c1";
+
+        //myQuery = " select a as b from T;";
+        Query qry = new Query();
+        qry.setQueryText(myQuery);
+
+
+        ConfigProperties configProperties = new ConfigProperties();
+
+        configProperties.loadProperties();
+
+        ClusterService clusterService = new ClusterService(configProperties);
+
+        // Load Table stats into memory
+//        Tables tablelist = clusterService.getTablesfromCluster();
+
+        Tables tablelist = clusterService.getTables(40);
+        ModelService ms = new ModelService();
+
+        // Set the Cached Tables into the Model for future annotation
+        ms.setTableList(tablelist);
+        //ms.annotateModel(qry,clusterService.tablelist);
+
+        ms.processSQL(1, qry, null, null, 400.5, 3, "public");
+        ms.scoreModel();
+        String str = ms.getModelJSON();
+
+        System.out.print(str);
     }
 }

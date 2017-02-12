@@ -15,6 +15,11 @@ public class Netezza extends Cluster {
 
     }
 
+    @Override
+    public void generateRecommendations(int cluster_id, Tables tablelist) {
+        //TODO:
+    }
+
 
     @Override
     protected String getQueryType(String query) {

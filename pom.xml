@@ -84,13 +84,22 @@
             <groupId>com.github.jsqlparser</groupId>
             <artifactId>jsqlparser</artifactId>
             <version>0.9.5</version>
-        </dependency>
+        </dependency><!--
+        <dependency>
+            <groupId>com.amazon.redshift</groupId>
+            <artifactId>redshift-jdbc42</artifactId>
+            <version>1.2.1.1001</version>
+        </dependency>-->
     </dependencies>
     <repositories>
         <repository>
             <id>codehaus</id>
             <url>http://repository.codehaus.org/org/codehaus</url>
-        </repository>
+        </repository><!--
+        <repository>
+            <id>redshift</id>
+            <url>http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release</url>
+        </repository>-->
     </repositories>
 
     <build>

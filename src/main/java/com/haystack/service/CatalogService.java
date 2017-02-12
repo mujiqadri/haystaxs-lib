@@ -2,6 +2,7 @@ package com.haystack.service;
 
 import com.haystack.domain.*;
 import com.haystack.parser.expression.StringValue;
+import com.haystack.service.database.Cluster;
 import com.haystack.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,6 +141,7 @@ public class CatalogService {
 
             ClusterService clusterService = new ClusterService(this.configProperties);
             Tables tablelist = clusterService.getTables(cluster_id);
+            Cluster cluster = clusterService.getCurrentCluster();
 
             ModelService ms = new ModelService();
 
@@ -301,7 +303,10 @@ public class CatalogService {
             preparedStatement.executeBatch(); //Persist AuditTrail Data in Database
 
             ms.scoreModel();
-            ms.generateRecommendations(cluster_id);
+//            ms.generateRecommendations(cluster_id);
+            cluster.generateRecommendations(cluster_id, ms.getTableList());
+            Tables tableList = cluster.getTableList();
+            ms.setTableList(tableList);
             String model_json = ms.getModelJSON();
 
             //Persist the tables states and everything in database

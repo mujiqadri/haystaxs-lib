@@ -1,6 +1,7 @@
 package com.haystack.service.database;
 
 import com.google.gson.*;
+import com.haystack.domain.Recommendation;
 import com.haystack.domain.Table;
 import com.haystack.domain.Tables;
 import com.haystack.parser.JSQLParserException;
@@ -22,12 +23,10 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.plaf.nimbus.State;
 import javax.swing.text.StyledEditorKit;
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Time;
-import java.sql.Timestamp;
+import java.sql.*;
 import java.util.*;
 
 /**
@@ -42,6 +41,8 @@ public abstract class Cluster {
     protected DBConnectService dbConn;
     DBConnectService haystackDBConn = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
     protected Credentials gpsd_Credentials;
+
+    protected Tables tablelist;
 
     protected final Logger log = LoggerFactory.getLogger(Cluster.class.getName());
 
@@ -647,4 +648,66 @@ public abstract class Cluster {
         }
         return sw.toString();
     }
+
+    protected Credentials getCredentials(int cluster_id) throws IOException, SQLException, ClassNotFoundException {
+        ConfigProperties configProperties = new ConfigProperties();
+        configProperties.loadProperties();
+
+        String haystackSchema = configProperties.properties.getProperty("main.schema");
+
+        Credentials gpsd_credentials  = configProperties.getGPSDCredentials();
+
+        String sql = "select cluster_id, cluster_db, host , dbname ,password , username ,port, coalesce(last_queries_refreshed_on, '1900-01-01') as last_queries_refreshed_on, " +
+                " coalesce(last_schema_refreshed_on,'1900-01-01') as last_schema_refreshed_on ,db_type as cluster_type, now() as current_time  from " + haystackSchema +
+                ".cluster where host is not null and is_active = true and cluster_id = " + cluster_id;
+
+        Credentials clusterCred = new Credentials();
+
+        DBConnectService dbConnectService = new DBConnectService(DBConnectService.DBTYPE.POSTGRES);
+        dbConnectService.connect(configProperties.getHaystackDBCredentials());
+
+        ResultSet rs = dbConnectService.execQuery(sql);
+
+        while (rs.next()) {
+
+            Integer clusterId = rs.getInt("cluster_id");
+
+            String hostName = rs.getString("host");
+            Boolean isGPSD = false;
+            if (hostName == null || hostName.length() == 0) { // load from stats
+                isGPSD = true;
+            }
+
+            if (isGPSD) { // load from stats
+                clusterCred = gpsd_credentials;
+                clusterCred.setDatabase(rs.getString("cluster_db"));
+            } else {
+
+                String sHost = rs.getString("host");
+                String dbname = rs.getString("dbname");
+                String username = rs.getString("username");
+                String password = rs.getString("password");
+                Integer port = rs.getInt("port");
+
+                clusterCred.setCredentials(sHost, ""+port, dbname, username, password);
+            }
+        }
+
+        return clusterCred;
+    }
+
+    protected Recommendation createNewRecommendation(Table currTable, Recommendation.RecommendationType type) {
+        Recommendation recommendation = new Recommendation();
+        recommendation.schema = currTable.schema;
+        recommendation.tableName = currTable.tableName;
+        recommendation.oid = currTable.oid;
+        recommendation.type = type;
+        return recommendation;
+    }
+
+    public Tables getTableList(){
+        return tablelist;
+    }
+
+    public abstract void generateRecommendations(int cluster_id, Tables tablelist);
 }
