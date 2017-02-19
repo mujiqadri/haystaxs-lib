@@ -565,18 +565,115 @@ public class Redshift extends Cluster {
     public void generateRecommendations(int cluster_id, Tables tablelist) {
         this.tablelist = tablelist;
 
+        /*
+            Distribution Recommendation rules:
+            ==================================
+            ALL:
+            1: if table is in 20%(in respect of size) then make its DISTRIBUTION STYLE as ALL.
+
+            EVEN:
+            1: If a table does not participate in joins, or if you don't have a clear choice for another distribution style, use EVEN distribution.
+
+            KEY:
+            1. find the largest fact table and then find the largest dimenstion table and then make the mostly used column of both in join as KEY DISTRIBUTION STYLE.
+        */
+
         try {
 
             Credentials credentials = getCredentials(cluster_id);
 
             // Fetch Recommendation Engine settings from config.properties file
             Double columnarThresholdPercent = Double.valueOf(configProperties.properties.getProperty("re.columnarThresholdPercent"));
-            Double topNPercent = Double.valueOf(configProperties.properties.getProperty("re.topNPercent"));
-            Double bottomNPercent = Double.valueOf(configProperties.properties.getProperty("re.bottomNPercent"));
+            Double topNPercent = Double.valueOf(configProperties.properties.getProperty("re.redshift.topNPercent"));
+            Double bottomNPercent = Double.valueOf(configProperties.properties.getProperty("re.redshift.bottomNPercent"));
 
-            Integer recId = 1;
+            Integer recId = 1; //Use for numbering RECOMMENDATIONS
 
-            Iterator<Map.Entry<String, Table>> entries = tablelist.tableHashMap.entrySet().iterator();
+            //Sort Tables by size
+            ArrayList<Map.Entry<String, Table>> tablesSortedBySize = new ArrayList<Map.Entry<String, Table>>(tablelist.tableHashMap.entrySet());
+
+            Collections.sort(tablesSortedBySize, new Comparator<Map.Entry<String, Table>>() {
+                @Override
+                public int compare(Map.Entry<String, Table> o1, Map.Entry<String, Table> o2) {
+
+                    Table t1 = o1.getValue();
+                    Table t2 = o2.getValue();
+
+                    return t1.stats.sizeUnCompressed > t2.stats.sizeUnCompressed ? -1 : 1;
+                }
+            });
+
+            //Generating Recommendations For KEY DISTRIBUTION STYLE
+            if(tablesSortedBySize.isEmpty() == false && tablesSortedBySize.size() > 1){
+                boolean disKeySuggetionFound = false;
+
+                Table firstBiggestTable = tablesSortedBySize.get(0).getValue();
+                Table secondBiggestTable = tablesSortedBySize.get(1).getValue();
+
+                String firstTable = null;
+                String firstTableColumn = null;
+                String secondTable = null;
+                String secondTableColumn = null;
+
+                float columnMaxConfidence = -1;
+
+                //Get joins of firstBiggestTable and find for mostly used colum in joins with respect to secondBiggestTable
+                Iterator<Map.Entry<String, Join>> firstBiggestTableJoinIterator = firstBiggestTable.joins.entrySet().iterator();
+                while(firstBiggestTableJoinIterator.hasNext()){
+                    Join currJoin = firstBiggestTableJoinIterator.next().getValue();
+                    HashMap<String, JoinTuple> joinTuples = currJoin.joinTuples;
+
+                    for(Map.Entry<String, JoinTuple> entrySet : joinTuples.entrySet()){
+                        JoinTuple joiningTuple = entrySet.getValue();
+                        if(firstBiggestTable.tableName.equals(currJoin.leftTable) && secondBiggestTable.tableName.equals(currJoin.rightTable)){
+                            if(currJoin.getConfidence() > columnMaxConfidence){
+                                firstTable = currJoin.leftTable;
+                                firstTableColumn = joiningTuple.leftcolumn;
+                                secondTable = currJoin.rightTable;
+                                secondTableColumn = joiningTuple.rightcolumn;
+                                columnMaxConfidence = currJoin.getConfidence();
+
+                                disKeySuggetionFound = true;
+                            }
+                        }
+                    }
+                }
+                if(disKeySuggetionFound){
+                    Recommendation recommendation = new Recommendation();
+                    recommendation.description = "Column '" +firstTableColumn +"' Should be the DISTRIBUTION KEY for Table '" +firstTable +"' and Column '" +secondTableColumn +"' Should be the DISTRIBUTION KEY for Table '" +secondTable +"'";
+
+                    tablelist.recommendations.put(recId.toString(), recommendation);
+                    recId++;
+                }
+            }
+
+            //Generating Recommendations for ALL DISTRIBUTION STYLE
+            Iterator<Map.Entry<String, Table>> tablesIterator = tablesSortedBySize.iterator();
+            while(tablesIterator.hasNext()){
+                Table currTable = tablesIterator.next().getValue();
+                if(currTable.stats.percentile <= bottomNPercent){
+                    Recommendation recommendation = new Recommendation();
+                    recommendation.description = "The '" +currTable.tableName +"' Should have ALL DISTRIBUTION STYLE";
+                    tablelist.recommendations.put(recId.toString(), recommendation);
+                    recId++;
+                }
+            }
+
+            //Generating Recommendatoins for EVEN DISTRIBUTION STYLE
+            tablesIterator = tablesSortedBySize.iterator();
+            while(tablesIterator.hasNext()){
+                Table currTable = tablesIterator.next().getValue();
+                if((currTable.stats.percentile > bottomNPercent && currTable.stats.percentile < topNPercent)
+                        && !currTable.distributionType.equalsIgnoreCase("EVEN")){
+
+                    Recommendation recommendation = new Recommendation();
+                    recommendation.description = "Table '" +currTable.tableName +"' Should have EVEN DISTRIBUTION STYLE";
+                    tablelist.recommendations.put(recId.toString(), recommendation);
+                    recId++;
+                }
+            }
+
+            /*Iterator<Map.Entry<String, Table>> entries = tablelist.tableHashMap.entrySet().iterator();
             while (entries.hasNext()) {
                 Map.Entry<String, Table> entry = entries.next();
                 String currKey = entry.getKey();
@@ -806,7 +903,7 @@ public class Redshift extends Cluster {
                         }
                     }
                 }
-            }
+            }*/
 
         } catch (Exception e) {
             e.printStackTrace();
